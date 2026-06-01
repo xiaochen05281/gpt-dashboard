@@ -3854,7 +3854,7 @@
         let totalRows = 0;
 
         for (const item of REPO_FILE_LIST) {
-            const url = item.path + encodeURIComponent(item.file);
+            const url = encodeURI(item.path + item.file);
             try {
                 const resp = await fetch(url);
                 if (!resp.ok) {
@@ -3891,7 +3891,7 @@
 
         // 加载请假记录
         try {
-            const leaveUrl = '10、请假/' + encodeURIComponent('OA休假明细-5月.xls');
+            const leaveUrl = encodeURI('10、请假/OA休假明细-5月.xls');
             const lResp = await fetch(leaveUrl);
             if (lResp.ok) {
                 const lBuf = await lResp.arrayBuffer();
@@ -3914,7 +3914,7 @@
 
         // 加载中心名单（线上/非线上分类）
         try {
-            const centerListUrl = encodeURIComponent('线上非线上中心名单模板-5月.xlsx');
+            const centerListUrl = encodeURI('线上非线上中心名单模板-5月.xlsx');
             const clResp = await fetch(centerListUrl);
             if (clResp.ok) {
                 const clBuf = await clResp.arrayBuffer();
