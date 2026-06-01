@@ -3870,7 +3870,7 @@
                 }
 
                 const data = jsonData.slice(1).filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
-                if (data.length === 0) return;
+                if (data.length === 0) continue;
 
                 await storeData(detected.type, data, detected.job || null);
                 loadedCount++;
@@ -3878,11 +3878,7 @@
             } catch (e) {
                 console.warn('[自动加载] 加载失败 ' + item.file + ':', e.message);
             }
-        });
-
-        // 并行执行所有文件加载
-        await Promise.all(tasks);
-        totalRows = loadedCount; // 只用loadedCount表示成功了几个文件
+        }
 
         // 加载请假记录（单独处理）
         try {
