@@ -4098,6 +4098,8 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
         showMainApp();
         init().catch(console.error);
     }
+    // 确保handleLogin全局可访问（onclick需要）
+    window.handleLogin = handleLogin;
     
     // Logout button handler
     document.getElementById('logout-btn').addEventListener('click', () => {
