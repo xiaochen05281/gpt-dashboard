@@ -257,6 +257,8 @@
         .config-group { background: var(--gray-100); padding: 16px; border-radius: 10px; margin-bottom: 16px; }
         .config-group-title { font-size: 14px; font-weight: 600; color: var(--gray-700); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
         .config-group-title .icon { font-size: 18px; }
+        .export-btn { width: 100%; padding: 7px; background: rgba(255,215,0,0.08); color: #FFD700; border: 1px solid rgba(255,215,0,0.3); border-radius: 6px; font-size: 11px; cursor: pointer; margin-top: 6px; transition: all 0.2s; }
+        .export-btn:hover { background: rgba(255,215,0,0.18); }
     </style>
 </head>
 <body>
@@ -338,6 +340,7 @@
                     <span id="sync-status">本地模式</span>
                 </div>
                 <button class="logout-btn" id="logout-btn">退出登录</button>
+                <button class="export-btn" id="export-static-btn" title="将当前数据固化到HTML，生成可部署的静态版本">📦 生成静态版</button>
             </div>
         </nav>
         
@@ -3809,6 +3812,143 @@
         });
     }
     
+    // ============================================
+    // 从仓库自动加载 Excel 数据文件（取代手动上传）
+    // ============================================
+    const REPO_FILE_LIST = [
+        { path: '1、工时过高/', file: '工时过高-5月.xlsx' },
+        { path: '2、工时偏低/', file: '工时偏低-5月.xlsx' },
+        { path: '3、工资偏高/', file: '工资偏高人员-5月.xlsx' },
+        { path: '4、后勤及职能占比/', file: '后勤及职能占比-5月.xlsx' },
+        { path: '5、主管组长管幅异常/', file: '主管组长管幅-5月.xlsx' },
+        { path: '6、连续出勤异常/', file: '连续出勤-5月.xlsx' },
+        { path: '7、连续未出勤/', file: '连续未出勤-5月.xlsx' },
+        { path: '8、绩效异常岗位/1、装车岗/', file: '装车岗-5月.xlsx' },
+        { path: '8、绩效异常岗位/2、卸车岗/', file: '卸车岗-5月.xlsx' },
+        { path: '8、绩效异常岗位/3、倒包岗/', file: '倒包岗-5月.xlsx' },
+        { path: '8、绩效异常岗位/4、供件岗/', file: '供件岗-5月.xlsx' },
+        { path: '8、绩效异常岗位/5、封包岗/', file: '封包岗-5月.xlsx' },
+        { path: '8、绩效异常岗位/6、分拣岗/', file: '分拣岗-5月.xlsx' },
+        { path: '8、绩效异常岗位/7、扫描岗/', file: '扫描岗-5月.xlsx' },
+        { path: '9、人数基数/', file: '人数基数-5月.xlsx' },
+    ];
+
+    async function autoLoadRepoFiles() {
+        // 只在数据表为空时加载
+        const sampleTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime'];
+        let hasData = false;
+        for (const t of sampleTables) {
+            try {
+                const cnt = await db[t].count();
+                if (cnt > 0) { hasData = true; break; }
+            } catch(e) {}
+        }
+        if (hasData) {
+            console.log('[自动加载] IndexedDB 已有数据，跳过');
+            return;
+        }
+
+        console.log('[自动加载] 开始从仓库加载 Excel 文件...');
+        const month = '2025-05'; // 固定5月
+        window._currentUploadMonth = month;
+        let totalRows = 0;
+
+        for (const item of REPO_FILE_LIST) {
+            const url = item.path + encodeURIComponent(item.file);
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) {
+                    console.warn('[自动加载] 跳过 ' + item.file + '（' + resp.status + '）');
+                    continue;
+                }
+                const buffer = await resp.arrayBuffer();
+                const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false, defval: '' });
+                if (jsonData.length === 0) continue;
+
+                const headers = jsonData[0];
+                const normalizedHeaders = {};
+                for (let key in headers) {
+                    normalizedHeaders[key.trim().replace(/\s+/g, '')] = key;
+                }
+                const detected = detectDataType(normalizedHeaders, item.file, item.path);
+                if (!detected) {
+                    console.warn('[自动加载] 无法识别类型:', item.file);
+                    continue;
+                }
+
+                const data = jsonData.slice(1).filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
+                if (data.length === 0) continue;
+
+                await storeData(detected.type, data, detected.job || null);
+                totalRows += data.length;
+                console.log('[自动加载] ✅ ' + item.file + ' → ' + detected.type + (detected.job ? '/' + detected.job : '') + ' (' + data.length + ' 行)');
+            } catch (e) {
+                console.warn('[自动加载] 加载失败 ' + item.file + ':', e.message);
+            }
+        }
+
+        // 加载请假记录
+        try {
+            const leaveUrl = '10、请假/' + encodeURIComponent('OA休假明细-5月.xls');
+            const lResp = await fetch(leaveUrl);
+            if (lResp.ok) {
+                const lBuf = await lResp.arrayBuffer();
+                const lWb = XLSX.read(new Uint8Array(lBuf), { type: 'array', cellDates: true });
+                const lSheet = lWb.Sheets[lWb.SheetNames[0]];
+                const lData = XLSX.utils.sheet_to_json(lSheet, { raw: false, defval: '' });
+                if (lData.length > 0) {
+                    const lRows = lData.slice(1).filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
+                    if (lRows.length > 0) {
+                        await storeData('leaveRecord', lRows, null);
+                        console.log('[自动加载] ✅ 请假记录: ' + lRows.length + ' 条');
+                    }
+                }
+            } else {
+                console.warn('[自动加载] 请假文件未找到');
+            }
+        } catch (e) {
+            console.warn('[自动加载] 请假文件加载失败:', e.message);
+        }
+
+        // 加载中心名单（线上/非线上分类）
+        try {
+            const centerListUrl = encodeURIComponent('线上非线上中心名单模板-5月.xlsx');
+            const clResp = await fetch(centerListUrl);
+            if (clResp.ok) {
+                const clBuf = await clResp.arrayBuffer();
+                const clWb = XLSX.read(new Uint8Array(clBuf), { type: 'array', cellDates: true });
+                const clSheet = clWb.Sheets[clWb.SheetNames[0]];
+                const clData = XLSX.utils.sheet_to_json(clSheet, { raw: false, defval: '' });
+                if (clData.length > 0) {
+                    centerTypes = {};
+                    let onlineCount = 0, offlineCount = 0;
+                    clData.forEach(row => {
+                        const name = (row['中心名称'] || row['中心'] || '').toString().trim();
+                        const typeStr = (row['中心类型'] || row['类型'] || '').toString().trim();
+                        if (!name) return;
+                        if (typeStr === '线上' || typeStr === 'online') {
+                            centerTypes[name] = 'online'; onlineCount++;
+                        } else if (typeStr === '非线上' || typeStr === 'offline') {
+                            centerTypes[name] = 'offline'; offlineCount++;
+                        }
+                    });
+                    try { await db.settings.put({ key: 'centerTypes', value: centerTypes }); } catch (e) {}
+                    console.log('[自动加载] ✅ 中心名单已加载: ' + onlineCount + '线上, ' + offlineCount + '非线上');
+                }
+            } else {
+                console.warn('[自动加载] 中心名单文件未找到，使用默认线上中心列表');
+                centerTypes = {};
+                DEFAULT_ONLINE_CENTERS.forEach(c => { centerTypes[c] = 'online'; });
+            }
+        } catch (e) {
+            console.warn('[自动加载] 中心名单加载失败:', e.message);
+        }
+
+        console.log('[自动加载] 完成，共 ' + totalRows + ' 行数据');
+    }
+
     async function init() {
         // Check login status first
         if (!checkLoginStatus()) {
@@ -3818,6 +3958,33 @@
         }
         
         showMainApp();
+        
+        // 如果有嵌入数据，先写入 IndexedDB（静态版模式）
+        if (window.__EMBEDDED_DATA__) {
+            console.log('[静态版] 检测到嵌入数据，正在写入 IndexedDB...');
+            try {
+                const tables = Object.keys(window.__EMBEDDED_DATA__);
+                for (const tableName of tables) {
+                    const rows = window.__EMBEDDED_DATA__[tableName];
+                    if (!rows || rows.length === 0) continue;
+                    try {
+                        await db[tableName].clear();
+                        const cleanRows = rows.map(r => { const { id, ...rest } = r; return rest; });
+                        await db[tableName].bulkAdd(cleanRows);
+                    } catch (e) {
+                        console.warn('[静态版] 跳过表 ' + tableName + ': ' + e.message);
+                    }
+                }
+                console.log('[静态版] 数据写入完成');
+            } catch (e) {
+                console.error('[静态版] 数据写入失败:', e);
+            }
+        }
+        
+        // 从仓库自动加载 Excel 数据（无嵌入数据时生效）
+        if (!window.__EMBEDDED_DATA__) {
+            await autoLoadRepoFiles();
+        }
         
         // 清除旧缓存，确保用最新计算逻辑
         try { await db.cachedStats.clear(); } catch (e) {}
@@ -3839,6 +4006,73 @@
             if (deductionChart) deductionChart.resize();
             if (alertTrendChart) alertTrendChart.resize();
         });
+    }
+    
+    // ============================================
+    // 生成静态版本：导出 IndexedDB 全部数据并嵌入 HTML
+    // ============================================
+    async function exportStaticVersion() {
+        const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord', 'settings', 'cachedStats'];
+        const allData = {};
+        
+        showLoading('正在导出数据...');
+        try {
+            for (const table of tables) {
+                try {
+                    const rows = await db[table].toArray();
+                    if (rows.length > 0) allData[table] = rows;
+                } catch (e) { /* 表不存在就跳过 */ }
+            }
+        } catch (e) {
+            hideLoading();
+            alert('导出数据失败：' + e.message);
+            return;
+        }
+        
+        if (Object.keys(allData).length === 0) {
+            hideLoading();
+            alert('没有数据可导出，请先上传Excel');
+            return;
+        }
+        
+        // 生成嵌入数据的脚本块
+        const dataJson = JSON.stringify(allData);
+        const seedScript = `
+<script>
+// ============================================================
+// ★ 嵌入数据 - 由"生成静态版"导出，共 ${Object.keys(allData).length} 个表
+// ★ init() 函数会自动将这份数据写入 IndexedDB
+// ============================================================
+window.__EMBEDDED_DATA__ = ${dataJson};
+console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EMBEDDED_DATA__).length + ' 个表');
+<\/script>`;
+        
+        // 通过 fetch 获取原始 HTML 源码（不包含 JS 运行时修改）
+        try {
+            const response = await fetch(window.location.href);
+            const htmlContent = await response.text();
+            const headCloseIdx = htmlContent.indexOf('</head>');
+            if (headCloseIdx === -1) throw new Error('无法定位 </head>');
+            
+            const newHtml = htmlContent.slice(0, headCloseIdx) + seedScript + htmlContent.slice(headCloseIdx);
+            
+            // 下载
+            const blob = new Blob([newHtml], { type: 'text/html; charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'GPT-Assessment-Dashboard-static.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            hideLoading();
+            alert('✅ 静态版已生成！文件: GPT-Assessment-Dashboard-static.html\n\n推送此文件到 GitHub，别人打开就能看到数据。');
+        } catch (e) {
+            hideLoading();
+            alert('生成失败：' + e.message + '\n\n请直接在浏览器打开此 HTML 文件（file://），不要在 GitHub Pages 上操作。');
+        }
     }
     
     // Initialize login form handler
@@ -3876,6 +4110,9 @@
             doLogout();
         }
     });
+    
+    // 生成静态版：导出所有数据并嵌入HTML
+    document.getElementById('export-static-btn').addEventListener('click', exportStaticVersion);
     
     init().catch(console.error);
     
