@@ -283,7 +283,7 @@
                     <label for="login-password">密码</label>
                     <input type="password" id="login-password" placeholder="请输入密码" required>
                 </div>
-                <button type="button" class="login-btn" id="login-btn">登录</button>
+                <button type="button" class="login-btn" id="login-btn" onclick="handleLogin()">登录</button>
                 <div class="login-error" id="login-error"></div>
             </form>
         </div>
@@ -4072,7 +4072,7 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
     }
     
     // Initialize login form handler
-    document.getElementById('login-btn').addEventListener('click', async () => {
+    async function handleLogin() {
         const name = document.getElementById('login-name').value.trim();
         const empId = document.getElementById('login-empid').value.trim();
         const password = document.getElementById('login-password').value;
@@ -4097,7 +4097,7 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
         doLogin(name, empId);
         showMainApp();
         init().catch(console.error);
-    });
+    }
     
     // Logout button handler
     document.getElementById('logout-btn').addEventListener('click', () => {
