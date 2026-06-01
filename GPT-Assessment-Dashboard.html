@@ -2263,7 +2263,20 @@
     // ============================================
     async function storeData(type, data, job = null) {
         const table = db[type];
-        await table.clear();
+        // 只清除当前月份（以及当前岗位，如果有）的数据，保留其他月份/岗位数据
+        const currentMonth = window._currentUploadMonth || '';
+        if (currentMonth) {
+            const toDelete = await table.where('month').equals(currentMonth).toArray();
+            const ids = job
+                ? toDelete.filter(r => r.job === job).map(r => r.id)
+                : toDelete.map(r => r.id);
+            if (ids.length > 0) {
+                await table.bulkDelete(ids);
+            }
+        } else {
+            // 兜底：无月份信息时清空整表（理论上不会走到这里）
+            await table.clear();
+        }
         
         // 请假记录特殊处理
         if (type === 'leaveRecord') {
