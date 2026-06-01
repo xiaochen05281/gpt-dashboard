@@ -3870,17 +3870,21 @@
                 }
 
                 const data = jsonData.slice(1).filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
-                if (data.length === 0) continue;
+                if (data.length === 0) return;
 
                 await storeData(detected.type, data, detected.job || null);
-                totalRows += data.length;
+                loadedCount++;
                 console.log('[自动加载] ✅ ' + item.file + ' → ' + detected.type + (detected.job ? '/' + detected.job : '') + ' (' + data.length + ' 行)');
             } catch (e) {
                 console.warn('[自动加载] 加载失败 ' + item.file + ':', e.message);
             }
-        }
+        });
 
-        // 加载请假记录
+        // 并行执行所有文件加载
+        await Promise.all(tasks);
+        totalRows = loadedCount; // 只用loadedCount表示成功了几个文件
+
+        // 加载请假记录（单独处理）
         try {
             const leaveUrl = encodeURI('10、请假/OA休假明细-5月.xls');
             const lResp = await fetch(leaveUrl);
@@ -3937,7 +3941,8 @@
             console.warn('[自动加载] 中心名单加载失败:', e.message);
         }
 
-        console.log('[自动加载] 完成，共 ' + totalRows + ' 行数据');
+        console.log('[自动加载] 完成，成功加载 ' + totalRows + ' 个文件');
+        hideLoading();
     }
 
     async function init() {
