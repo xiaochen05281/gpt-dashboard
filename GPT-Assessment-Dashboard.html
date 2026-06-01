@@ -2377,13 +2377,15 @@
     // Assessment Calculation
     // ============================================
     async function calculateAllStats(month) {
-        try {
         if (!month) return null;
-        
+
+        // 先查缓存
         try {
             const cached = await db.cachedStats.where('month').equals(month).first();
             if (cached) return cached.data;
         } catch (e) {}
+
+        try {
         
         const stats = {
             month: month,
@@ -2709,6 +2711,11 @@
         } catch (e) {}
         
         return stats;
+        } catch (e) {
+            console.error('calculateAllStats 失败：', e);
+            showError(`数据计算失败：${e.message}`);
+            return null;
+        }
     }
     
     function calcRankBonus(rank, total) {
@@ -4117,6 +4124,7 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
     
     // Initialize login form handler
     async function handleLogin() {
+        try {
         const name = document.getElementById('login-name').value.trim();
         const empId = document.getElementById('login-empid').value.trim();
         const password = document.getElementById('login-password').value;
@@ -4141,6 +4149,10 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
         doLogin(name, empId);
         showMainApp();
         init().catch(console.error);
+        } catch (e) {
+            console.error('登录失败：', e);
+            errorEl.textContent = '登录异常，请重试：' + e.message;
+        }
     }
     // 确保handleLogin全局可访问（onclick需要）
     window.handleLogin = handleLogin;
