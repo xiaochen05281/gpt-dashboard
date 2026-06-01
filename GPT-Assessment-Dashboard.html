@@ -3840,7 +3840,7 @@
         for (const t of allTables) {
             try { await db[t].clear(); } catch(e) {}
         }
-        const month = '2025-05'; // 固定5月
+        const month = '2026-05'; // 固定5月
         window._currentUploadMonth = month;
         let totalRows = 0;
 
@@ -3873,7 +3873,7 @@
                 if (data.length === 0) continue;
 
                 await storeData(detected.type, data, detected.job || null);
-                loadedCount++;
+                totalRows++;
                 console.log('[自动加载] ✅ ' + item.file + ' → ' + detected.type + (detected.job ? '/' + detected.job : '') + ' (' + data.length + ' 行)');
             } catch (e) {
                 console.warn('[自动加载] 加载失败 ' + item.file + ':', e.message);
