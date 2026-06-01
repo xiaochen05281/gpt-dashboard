@@ -3834,21 +3834,12 @@
     ];
 
     async function autoLoadRepoFiles() {
-        // 只在数据表为空时加载
-        const sampleTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime'];
-        let hasData = false;
-        for (const t of sampleTables) {
-            try {
-                const cnt = await db[t].count();
-                if (cnt > 0) { hasData = true; break; }
-            } catch(e) {}
-        }
-        if (hasData) {
-            console.log('[自动加载] IndexedDB 已有数据，跳过');
-            return;
-        }
-
         console.log('[自动加载] 开始从仓库加载 Excel 文件...');
+        // 先清空旧数据，避免重复
+        const allTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
+        for (const t of allTables) {
+            try { await db[t].clear(); } catch(e) {}
+        }
         const month = '2025-05'; // 固定5月
         window._currentUploadMonth = month;
         let totalRows = 0;
