@@ -3974,7 +3974,7 @@
 
         // 加载请假记录（单独处理）
         try {
-            const leaveUrl = encodeURI('10、请假/OA休假明细-5月.xls');
+            const leaveUrl = 'source/10、请假/OA休假明细-5月.xls';
             const lResp = await fetch(leaveUrl);
             if (lResp.ok) {
                 const lBuf = await lResp.arrayBuffer();
@@ -3997,7 +3997,7 @@
 
         // 加载中心名单（线上/非线上分类）
         try {
-            const centerListUrl = encodeURI('线上非线上中心名单模板-5月.xlsx');
+            const centerListUrl = 'source/线上非线上中心名单模板-5月.xlsx';
             const clResp = await fetch(centerListUrl);
             if (clResp.ok) {
                 const clBuf = await clResp.arrayBuffer();
