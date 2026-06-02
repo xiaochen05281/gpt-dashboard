@@ -3401,6 +3401,30 @@
             });
         });
         
+        // Export all data to Excel
+        async function exportToExcel() {
+            showLoading('正在导出数据...');
+            try {
+                const wb = XLSX.utils.book_new();
+                const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
+                for (const t of tables) {
+                    try {
+                        const rows = await db[t].toArray();
+                        if (rows.length === 0) continue;
+                        const cleanRows = rows.map(r => { const { id, ...rest } = r; return rest; });
+                        const ws = XLSX.utils.json_to_sheet(cleanRows);
+                        XLSX.utils.book_append_sheet(wb, ws, t);
+                    } catch (e) {}
+                }
+                XLSX.writeFile(wb, 'GPT考核数据导出_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+                hideLoading();
+                showSuccess('数据导出成功');
+            } catch (err) {
+                hideLoading();
+                showError('导出失败: ' + err.message);
+            }
+        }
+
         // Process button
         document.getElementById('process-btn').addEventListener('click', async () => {
             showLoading('正在处理数据...');
@@ -3913,7 +3937,7 @@
         let totalRows = 0;
 
         for (const item of REPO_FILE_LIST) {
-            const url = encodeURI(item.path + item.file);
+            const url = item.path + item.file;
             try {
                 const resp = await fetch(url);
                 if (!resp.ok) {
