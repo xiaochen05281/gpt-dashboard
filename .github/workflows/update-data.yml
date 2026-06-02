@@ -1,0 +1,45 @@
+name: Update Dashboard Data
+
+on:
+  schedule:
+    # 每天北京时间早上8点运行 (UTC 00:00)
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # 允许手动触发
+  push:
+    paths:
+      - 'data/**.xlsx'
+      - 'data/**.xls'
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: pip install pandas openpyxl
+
+      - name: Run Excel to JSON conversion
+        run: python excel_to_json.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/*.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "auto: 更新数据JSON文件 [skip ci]"
+            git push
+          fi
