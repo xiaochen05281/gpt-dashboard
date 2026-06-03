@@ -3335,13 +3335,16 @@
             }
         }
         
-        // Fallback to IndexedDB
-        if (months.length === 0) {
+        // 从所有表中收集月份
+        const allTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
+        const monthSet = new Set();
+        for (const t of allTables) {
             try {
-                const data = await db.headcount.toArray();
-                months = [...new Set(data.map(r => r.month))].sort().reverse();
+                const data = await db[t].toArray();
+                data.forEach(r => { if (r.month) monthSet.add(r.month); });
             } catch (e) {}
         }
+        months = [...monthSet].sort().reverse();
         
         ['main-month', 'online-month', 'offline-month', 'region-month', 'alert-month'].forEach(id => {
             const select = document.getElementById(id);
@@ -3826,16 +3829,29 @@
         const badgeEl = document.getElementById(badgeId);
         
         if (result.success) {
-            // 移除同类型旧数据
+            // 只移除同类型同月份的数据，保留其他月份（支持多月份共存）
             uploadedFiles = uploadedFiles.filter(fd => {
-                if (job) return !(fd.type === type && fd.job === job);
-                return fd.type !== type;
+                const sameType = job ? (fd.type === type && fd.job === job) : (fd.type === type);
+                const sameMonth = fd.month === window._currentUploadMonth;
+                return !(sameType && sameMonth);
             });
-            uploadedFiles.push(result);
-            
+            uploadedFiles.push({ ...result, month: window._currentUploadMonth });
+
+            // 更新 slot 显示：展示已上传的所有月份
             if (slotEl) { slotEl.classList.add('uploaded'); }
-            if (statusEl) { statusEl.textContent = `${file.name} | ${result.count}条`; }
+            if (statusEl) {
+                const monthsForType = uploadedFiles
+                    .filter(fd => job ? (fd.type === type && fd.job === job) : (fd.type === type))
+                    .map(fd => fd.month)
+                    .filter(Boolean);
+                statusEl.textContent = monthsForType.length > 0
+                    ? `已上传: ${monthsForType.join(', ')}`
+                    : `${file.name} | ${result.count}条`;
+            }
             if (badgeEl) { badgeEl.textContent = '✓'; badgeEl.className = 'slot-badge done'; }
+
+            // 上传后刷新月份下拉框
+            try { await loadMonthOptions(); } catch(e) {}
         } else {
             if (slotEl) { slotEl.classList.remove('uploaded'); }
             if (statusEl) { statusEl.textContent = `失败: ${result.error}`; statusEl.style.color = '#991B1B'; }
@@ -3906,24 +3922,30 @@
     }
     
     // ============================================
+    // 数据月份配置（只需改这里）
+    // ============================================
+    const DATA_MONTH_LABEL = '6月';      // 文件名中的月份标识，如 '5月' 或 '6月'
+    const DATA_MONTH = '2026-06';       // 数据库存储的月份格式
+    // ============================================
+
     // 从仓库自动加载 Excel 数据文件（取代手动上传）
     // ============================================
     const REPO_FILE_LIST = [
-        { path: 'source/1、工时过高/', file: '工时过高-5月.xlsx' },
-        { path: 'source/2、工时偏低/', file: '工时偏低-5月.xlsx' },
-        { path: 'source/3、工资偏高/', file: '工资偏高人员-5月.xlsx' },
-        { path: 'source/4、后勤及职能占比/', file: '后勤及职能占比-5月.xlsx' },
-        { path: 'source/5、主管组长管幅异常/', file: '主管组长管幅-5月.xlsx' },
-        { path: 'source/6、连续出勤异常/', file: '连续出勤-5月.xlsx' },
-        { path: 'source/7、连续未出勤/', file: '连续未出勤-5月.xlsx' },
-        { path: 'source/8、绩效异常岗位/1、装车岗/', file: '装车岗-5月.xlsx' },
-        { path: 'source/8、绩效异常岗位/2、卸车岗/', file: '卸车岗-5月.xlsx' },
-        { path: 'source/8、绩效异常岗位/3、倒包岗/', file: '倒包岗-5月.xlsx' },
-        { path: 'source/8、绩效异常岗位/4、供件岗/', file: '供件岗-5月.xlsx' },
-        { path: 'source/8、绩效异常岗位/5、封包岗/', file: '封包岗-5月.xlsx' },
-        { path: 'source/8、绩效异常岗位/6、分拣岗/', file: '分拣岗-5月.xlsx' },
-        { path: 'source/8、绩效异常岗位/7、扫描岗/', file: '扫描岗-5月.xlsx' },
-        { path: 'source/9、人数基数/', file: '人数基数-5月.xlsx' },
+        { path: `source/1、工时过高/`, file: `工时过高-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/2、工时偏低/`, file: `工时偏低-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/3、工资偏高/`, file: `工资偏高人员-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/4、后勤及职能占比/`, file: `后勤及职能占比-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/5、主管组长管幅异常/`, file: `主管组长管幅-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/6、连续出勤异常/`, file: `连续出勤-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/7、连续未出勤/`, file: `连续未出勤-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/8、绩效异常岗位/1、装车岗/`, file: `装车岗-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/8、绩效异常岗位/2、卸车岗/`, file: `卸车岗-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/8、绩效异常岗位/3、倒包岗/`, file: `倒包岗-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/8、绩效异常岗位/4、供件岗/`, file: `供件岗-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/8、绩效异常岗位/5、封包岗/`, file: `封包岗-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/8、绩效异常岗位/6、分拣岗/`, file: `分拣岗-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/8、绩效异常岗位/7、扫描岗/`, file: `扫描岗-${DATA_MONTH_LABEL}.xlsx` },
+        { path: `source/9、人数基数/`, file: `人数基数-${DATA_MONTH_LABEL}.xlsx` },
     ];
 
     async function autoLoadRepoFiles() {
@@ -3933,7 +3955,7 @@
         for (const t of allTables) {
             try { await db[t].clear(); } catch(e) {}
         }
-        const month = '2026-05'; // 固定5月
+        const month = DATA_MONTH; // 使用配置中的月份
         window._currentUploadMonth = month;
         let totalRows = 0;
 
@@ -3975,7 +3997,7 @@
 
         // 加载请假记录（单独处理）
         try {
-            const leaveUrl = 'source/10、请假/OA休假明细-5月.xls';
+            const leaveUrl = `source/10、请假/OA休假明细-${DATA_MONTH_LABEL}.xls`;
             const lResp = await fetch(leaveUrl);
             if (lResp.ok) {
                 const lBuf = await lResp.arrayBuffer();
@@ -3998,7 +4020,7 @@
 
         // 加载中心名单（线上/非线上分类）
         try {
-            const centerListUrl = 'source/线上非线上中心名单模板-5月.xlsx';
+            const centerListUrl = `source/线上非线上中心名单模板-${DATA_MONTH_LABEL}.xlsx`;
             const clResp = await fetch(centerListUrl);
             if (clResp.ok) {
                 const clBuf = await clResp.arrayBuffer();
