@@ -2242,7 +2242,7 @@
                 throw new Error('无法识别数据类型');
             }
             
-            const normalizedData = jsonData.slice(1).filter(row => {
+            const normalizedData = jsonData.filter(row => {
                 return Object.values(row).some(v => v && v.toString().trim() !== '');
             });
             
@@ -3788,7 +3788,7 @@
             }
             
             // 跳过自动类型检测，直接用 slot 指定的 type 和 job
-            const normalizedData = jsonData.slice(1).filter(row => {
+            const normalizedData = jsonData.filter(row => {
                 return Object.values(row).some(v => v && v.toString().trim() !== '');
             });
             
@@ -3962,7 +3962,7 @@
                     continue;
                 }
 
-                const data = jsonData.slice(1).filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
+                const data = jsonData.filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
                 if (data.length === 0) continue;
 
                 await storeData(detected.type, data, detected.job || null);
@@ -3983,7 +3983,7 @@
                 const lSheet = lWb.Sheets[lWb.SheetNames[0]];
                 const lData = XLSX.utils.sheet_to_json(lSheet, { raw: false, defval: '' });
                 if (lData.length > 0) {
-                    const lRows = lData.slice(1).filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
+                    const lRows = lData.filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
                     if (lRows.length > 0) {
                         await storeData('leaveRecord', lRows, null);
                         console.log('[自动加载] ✅ 请假记录: ' + lRows.length + ' 条');
