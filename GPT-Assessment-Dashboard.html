@@ -748,46 +748,6 @@
                     <strong>💡 提示：</strong>点击对应数据类型的上传框选择Excel文件，每个类型单独上传。绩效异常岗位按岗位分别上传。每月名单可能变化，请及时上传最新的中心名单。
                 </div>
 
-                <!-- 中心名单上传 -->
-                <div class="card" style="border-left: 4px solid var(--yuantong-red);">
-                    <div class="card-title"><span class="icon">🏭</span>线上/非线上中心名单上传</div>
-                    <p style="color: var(--gray-600); font-size: 13px; margin-bottom: 12px;">
-                        上传中心分类名单，系统将据此区分线上中心（6项考核）和非线上中心（4项考核）。<strong>每月名单可能变化，请上传最新版本。</strong>
-                    </p>
-                    <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                        <div class="upload-zone" id="center-list-upload-zone" style="flex: 1; padding: 20px; min-height: 80px;" onclick="document.getElementById('center-list-input').click()">
-                            <div style="font-size: 28px; color: var(--yuantong-red);">📋</div>
-                            <h3 style="font-size: 14px; margin: 8px 0 4px;">点击上传中心名单</h3>
-                            <p style="font-size: 12px;">支持 .xlsx, .xls 格式</p>
-                        </div>
-                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                            <button class="btn btn-primary" id="download-center-template-btn" style="white-space: nowrap;">
-                                <span>📥</span> 下载标准模板
-                            </button>
-                            <button class="btn btn-secondary" id="load-default-centers-btn" style="white-space: nowrap;">
-                                <span>🔄</span> 加载默认名单
-                            </button>
-                        </div>
-                        <input type="file" id="center-list-input" accept=".xlsx,.xls" style="display:none;" onchange="handleCenterListFile(this.files[0])">
-                    </div>
-                    <div id="center-list-status" style="padding: 10px; background: var(--gray-100); border-radius: 8px; font-size: 13px; display: none;"></div>
-                    <div style="margin-top: 8px;">
-                        <details style="font-size: 12px; color: var(--gray-600);">
-                            <summary style="cursor: pointer; color: var(--yuantong-purple); font-weight: 500;">查看标准模板格式说明</summary>
-                            <div style="margin-top: 8px; padding: 12px; background: var(--white); border-radius: 6px; border: 1px solid var(--gray-200);">
-                                <p><strong>模板列头（2列）：</strong></p>
-                                <table style="font-size: 12px; margin-top: 4px;">
-                                    <tr><th style="padding: 4px 12px; background: var(--gray-100);">中心名称</th><th style="padding: 4px 12px; background: var(--gray-100);">中心类型</th></tr>
-                                    <tr><td style="padding: 4px 12px;">广州</td><td style="padding: 4px 12px;">线上</td></tr>
-                                    <tr><td style="padding: 4px 12px;">深圳</td><td style="padding: 4px 12px;">线上</td></tr>
-                                    <tr><td style="padding: 4px 12px;">湛江</td><td style="padding: 4px 12px;">非线上</td></tr>
-                                </table>
-                                <p style="margin-top: 8px; color: var(--yuantong-red);">⚠️ 中心名称请使用简称（如"广州"而非"广州转运中心"）；中心类型填"线上"或"非线上"；未在名单中的中心默认按非线上处理。</p>
-                            </div>
-                        </details>
-                    </div>
-                </div>
-                
                 <div class="card">
                     <div class="card-title"><span class="icon">📁</span>上传考核数据文件</div>
                     
@@ -853,6 +813,12 @@
                             <span class="slot-badge pending" id="badge-leaveRecord">待传</span>
                         </div>
                         <input type="file" id="input-leaveRecord" accept=".xlsx,.xls" style="display:none;" data-type="leaveRecord">
+                        <div class="upload-slot" id="slot-centerList" onclick="document.getElementById('input-centerList').click()">
+                            <span class="slot-icon">🏢</span>
+                            <div class="slot-info"><div class="slot-name">中心名单</div><div class="slot-status" id="status-centerList">未上传</div></div>
+                            <span class="slot-badge pending" id="badge-centerList">待传</span>
+                        </div>
+                        <input type="file" id="input-centerList" accept=".xlsx,.xls" style="display:none;" data-type="centerList">
                     </div>
 
                     <div class="upload-group-title">📈 绩效异常岗位（按岗位上传）</div>
@@ -1424,14 +1390,21 @@
         if (!FIREBASE_ENABLED || !db_firestore) return;
         try {
             const docId = `${type}_${month}`;
-            await db_firestore.collection('gpt_data').doc(docId).set({
-                records: records,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedBy: currentUser?.name || 'unknown'
-            });
+            // 5秒超时，避免网络卡住
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Firestore timeout')), 5000)
+            );
+            await Promise.race([
+                db_firestore.collection('gpt_data').doc(docId).set({
+                    records: records,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedBy: currentUser?.name || 'unknown'
+                }),
+                timeoutPromise
+            ]);
             console.log(`Saved ${type} data to Firestore for ${month}`);
         } catch (e) {
-            console.error(`Failed to save ${type} to Firestore:`, e);
+            console.error(`Failed to save ${type} to Firestore:`, e.message);
         }
     }
     
@@ -1465,8 +1438,9 @@
     async function saveSettingsToFirestore() {
         if (!FIREBASE_ENABLED || !db_firestore) return;
         try {
+            const map = await getCenterTypesMap();
             await db_firestore.collection('gpt_data').doc('settings').set({
-                centerTypes: centerTypes,
+                centerTypesMap: map,
                 provinceToRegion: PROVINCE_TO_REGION,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedBy: currentUser?.name || 'unknown'
@@ -1495,6 +1469,7 @@
     }
     
     async function handleFirestoreDataChange(snapshot) {
+        console.log('[DEBUG] handleFirestoreDataChange 触发', { docCount: snapshot.docs?.length });
         // Check if this change was made by the current user (avoid infinite loop)
         const changes = snapshot.docChanges();
         let madeByCurrentUser = false;
@@ -1506,8 +1481,9 @@
                 break;
             }
         }
-        
-        if (madeByCurrentUser) return;
+        console.log('[DEBUG] handleFirestoreDataChange madeByCurrentUser=', madeByCurrentUser, 'currentUser=', currentUser?.name);
+
+        if (madeByCurrentUser) { console.log('[DEBUG] 是本用户操作，跳过刷新'); return; }
         
         // Reload data from Firestore and update UI
         try {
@@ -1518,14 +1494,23 @@
             // Reload settings
             const remoteSettings = await loadSettingsFromFirestore();
             if (remoteSettings) {
-                if (remoteSettings.centerTypes) {
+                if (remoteSettings.centerTypesMap) {
+                    try { await saveCenterTypesMap(remoteSettings.centerTypesMap); } catch (e) {}
+                    // 使用最新的月份
+                    const months = Object.keys(remoteSettings.centerTypesMap).sort().reverse();
+                    if (months.length > 0) {
+                        centerTypes = remoteSettings.centerTypesMap[months[0]];
+                        currentCenterTypesMonth = months[0];
+                    }
+                } else if (remoteSettings.centerTypes) {
+                    // 兼容旧格式
                     centerTypes = remoteSettings.centerTypes;
                 }
                 if (remoteSettings.provinceToRegion) {
                     PROVINCE_TO_REGION = { ...PROVINCE_TO_REGION, ...remoteSettings.provinceToRegion };
                 }
             }
-            
+
             // Reload month selectors and data
             await updateMonthSelectors();
             if (currentMonth) {
@@ -1857,7 +1842,8 @@
     // Global State
     // ============================================
     let cachedStats = {};
-    let centerTypes = {};  // center -> 'online' | 'offline'
+    let centerTypes = {};  // center -> 'online' | 'offline' (当前激活的)
+    let currentCenterTypesMonth = '';  // 当前使用的中心名单月份
     let allCenters = new Set();  // 动态收集所有中心
     let allProvinces = new Set();  // 动态收集所有省区
     let currentMonth = null;
@@ -1935,7 +1921,49 @@
         }
         return dateStr;
     }
-    
+
+    // ========== 中心名单多月份管理 ==========
+    async function getCenterTypesMap() {
+        try {
+            const saved = await db.settings.get('centerTypesMap');
+            return (saved && saved.value) ? saved.value : {};
+        } catch (e) { return {}; }
+    }
+
+    async function saveCenterTypesMap(map) {
+        try { await db.settings.put({ key: 'centerTypesMap', value: map }); } catch (e) {}
+    }
+
+    async function saveCenterTypesForMonth(month, types) {
+        const map = await getCenterTypesMap();
+        console.log('[DEBUG] saveCenterTypesForMonth 保存前', { month, existingKeys: Object.keys(map), newTypeCount: Object.keys(types).length });
+        map[month] = types;
+        await saveCenterTypesMap(map);
+        const verifyMap = await getCenterTypesMap();
+        console.log('[DEBUG] saveCenterTypesForMonth 保存后', { month, allKeys: Object.keys(verifyMap) });
+        currentCenterTypesMonth = month;
+        centerTypes = types;
+    }
+
+    async function loadCenterTypesForMonth(month) {
+        console.log('[DEBUG] loadCenterTypesForMonth 调用', { month });
+        const map = await getCenterTypesMap();
+        console.log('[DEBUG] loadCenterTypesForMonth map keys=', Object.keys(map));
+        if (map[month]) {
+            centerTypes = map[month];
+            currentCenterTypesMonth = month;
+            console.log('[DEBUG] loadCenterTypesForMonth 成功加载', { month, centerCount: Object.keys(centerTypes).length });
+            return true;
+        }
+        console.log('[DEBUG] loadCenterTypesForMonth 未找到该月份', { month });
+        return false;
+    }
+
+    async function getAvailableCenterMonths() {
+        const map = await getCenterTypesMap();
+        return Object.keys(map).sort().reverse();
+    }
+    // ==========================================
 
     // 将「数据日期」转为可比较的数值（越大越新）
 
@@ -2393,6 +2421,9 @@
     async function calculateAllStats(month) {
         if (!month) return null;
 
+        // 加载对应月份的中心名单
+        await loadCenterTypesForMonth(month);
+
         // 先查缓存
         try {
             const cached = await db.cachedStats.where('month').equals(month).first();
@@ -2400,7 +2431,7 @@
         } catch (e) {}
 
         try {
-        
+
         const stats = {
             month: month,
             centers: {},
@@ -3382,7 +3413,7 @@
                 if (currentMonth) await loadStatsForMonth(currentMonth);
             });
         });
-        
+
         // Center type tabs
         document.querySelectorAll('#page-dashboard .tab').forEach(tab => {
             tab.addEventListener('click', () => {
@@ -3400,7 +3431,12 @@
                 if (!file) return;
                 const type = input.dataset.type;
                 const job = input.dataset.job || null;
-                await handleSlotUpload(file, type, job);
+                // 中心名单用专用处理函数
+                if (type === 'centerList') {
+                    await handleCenterListFile(file);
+                } else {
+                    await handleSlotUpload(file, type, job);
+                }
                 e.target.value = '';
             });
         });
@@ -3518,10 +3554,12 @@
         });
         
         document.getElementById('save-center-type').addEventListener('click', async () => {
-            try { await db.settings.put({ key: 'centerTypes', value: centerTypes }); } catch (e) {}
+            const month = currentCenterTypesMonth || DATA_MONTH || '2026-06';
+            await saveCenterTypesForMonth(month, centerTypes);
             // Sync to Firestore
             await saveSettingsToFirestore();
-            alert('中心类型配置已保存');
+            await updateCenterListAllStatus();
+            alert(`中心类型配置已保存到 ${month}`);
         });
 
         // ========== 考核规则配置 ==========
@@ -3577,51 +3615,6 @@
 
         // 加载配置表单初始值
         loadScoringConfigToForm();
-
-        // ========== 中心名单上传 ==========
-        const centerListUploadZone = document.getElementById('center-list-upload-zone');
-        const centerListInput = document.getElementById('center-list-input');
-        centerListUploadZone.addEventListener('click', () => centerListInput.click());
-        centerListUploadZone.addEventListener('dragover', e => { e.preventDefault(); centerListUploadZone.classList.add('dragover'); });
-        centerListUploadZone.addEventListener('dragleave', () => centerListUploadZone.classList.remove('dragover'));
-        centerListUploadZone.addEventListener('drop', async e => {
-            e.preventDefault();
-            centerListUploadZone.classList.remove('dragover');
-            const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls'));
-            if (files.length) await handleCenterListFile(files[0]);
-        });
-        centerListInput.addEventListener('change', async e => {
-            const files = Array.from(e.target.files);
-            if (files.length) await handleCenterListFile(files[0]);
-        });
-
-        // 加载默认名单
-        document.getElementById('load-default-centers-btn').addEventListener('click', async () => {
-            centerTypes = {};
-            DEFAULT_ONLINE_CENTERS.forEach(c => { centerTypes[c] = 'online'; });
-            try { await db.settings.put({ key: 'centerTypes', value: centerTypes }); } catch (e) {}
-            // Sync to Firestore
-            await saveSettingsToFirestore();
-            const onlineCount = Object.values(centerTypes).filter(v => v === 'online').length;
-            updateCenterListStatus(`✅ 已加载默认名单：${onlineCount} 个线上中心，其余中心将按非线上处理`);
-            renderSettings();
-        });
-
-        // 下载中心名单模板
-        document.getElementById('download-center-template-btn').addEventListener('click', () => {
-            const data = [['中心名称', '中心类型']];
-            DEFAULT_ONLINE_CENTERS.forEach(c => data.push([c, '线上']));
-            data.push(['示例非线上中心', '非线上']);
-            const ws = XLSX.utils.aoa_to_sheet(data);
-            ws['!cols'] = [{ wch: 16 }, { wch: 10 }];
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, '中心名单');
-            const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = '线上非线上中心名单模板.xlsx';
-            a.click();
-        });
 
         // ========== 数据模板下载 ==========
         const TEMPLATES = {
@@ -3725,8 +3718,50 @@
     }
 
     // 处理中心名单上传
+    // 从文件名中提取月份（如：中心名单-2026-05.xlsx → 2026-05）
+    function extractMonthFromFilename(filename) {
+        if (!filename) return null;
+        // 匹配 2026-05、2026-5、202605、26-05、26-5 等格式
+        const patterns = [
+            /(\d{4})-(\d{1,2})/,      // 2026-05, 2026-5
+            /(\d{4})(\d{2})/,          // 202605
+            /(\d{2})-(\d{1,2})/,       // 26-05 (假设20xx年)
+        ];
+        for (const pattern of patterns) {
+            const match = filename.match(pattern);
+            if (match) {
+                let year = match[1];
+                let month = match[2].padStart(2, '0');
+                if (year.length === 2) {
+                    const y = parseInt(year);
+                    year = (y >= 50 ? '19' : '20') + year;
+                }
+                return `${year}-${month}`;
+            }
+        }
+        return null;
+    }
+
     async function handleCenterListFile(file) {
         try {
+            console.log('[DEBUG] handleCenterListFile 开始', { fileName: file.name, fileSize: file.size });
+            // 1. 先从文件名提取月份
+            let month = extractMonthFromFilename(file.name);
+            console.log('[DEBUG] extractMonthFromFilename 结果', { month });
+            // 2. 文件名没提取到，用输入框的值
+            if (!month) {
+                const monthInput = document.getElementById('center-list-month-input');
+                const manualMonth = monthInput ? monthInput.value : '';
+                if (manualMonth) {
+                    month = normalizeMonth(manualMonth);
+                }
+            }
+            // 3. 都没有，提示用户
+            if (!month) {
+                alert('未能从文件名识别月份，请手动输入或修改文件名（如：中心名单-2026-05.xlsx）');
+                return;
+            }
+
             const data = await parseExcelFile(file);
             if (!data.length) { alert('文件为空'); return; }
 
@@ -3739,7 +3774,7 @@
                 return;
             }
 
-            centerTypes = {};
+            const newTypes = {};
             let onlineCount = 0, offlineCount = 0;
             data.forEach(row => {
                 const centerName = row['中心名称'] || row['中心'] || '';
@@ -3747,19 +3782,33 @@
                 if (!centerName) return;
                 const name = centerName.trim();
                 if (typeStr === '线上' || typeStr === 'online') {
-                    centerTypes[name] = 'online';
+                    newTypes[name] = 'online';
                     onlineCount++;
                 } else if (typeStr === '非线上' || typeStr === 'offline') {
-                    centerTypes[name] = 'offline';
+                    newTypes[name] = 'offline';
                     offlineCount++;
                 }
             });
 
-            try { await db.settings.put({ key: 'centerTypes', value: centerTypes }); } catch (e) {}
-            // Sync to Firestore
+            // 保存到对应月份
+            await saveCenterTypesForMonth(month, newTypes);
+            // Sync to Firestore (保存整个 map)
+            const mapBeforeSync = await getCenterTypesMap();
+            console.log('[DEBUG] saveSettingsToFirestore 前', { keys: Object.keys(mapBeforeSync) });
             await saveSettingsToFirestore();
-            updateCenterListStatus(`✅ 名单已加载：${onlineCount} 个线上中心，${offlineCount} 个非线上中心（未在名单中的中心默认按非线上处理）`);
+            // 刷新状态显示
+            await updateCenterListAllStatus();
+            updateCenterListStatus(`✅ ${month} 名单已加载：${onlineCount} 个线上中心，${offlineCount} 个非线上中心`);
             renderSettings();
+
+            // 更新上传页面 slot 状态（显示所有已上传的月份）
+            const allCenterMonths = await getAvailableCenterMonths();
+            const slotEl = document.getElementById('slot-centerList');
+            const statusEl = document.getElementById('status-centerList');
+            const badgeEl = document.getElementById('badge-centerList');
+            if (slotEl) slotEl.classList.add('uploaded');
+            if (statusEl) statusEl.textContent = `已上传: ${allCenterMonths.join(', ')}`;
+            if (badgeEl) { badgeEl.textContent = '✓'; badgeEl.className = 'slot-badge done'; }
         } catch (err) {
             alert('解析失败：' + err.message);
         }
@@ -3772,7 +3821,94 @@
             el.style.display = 'block';
         }
     }
+
+    async function getAllDataMonths() {
+        const monthSet = new Set();
+        const allTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
+        for (const t of allTables) {
+            try {
+                const data = await db[t].toArray();
+                data.forEach(r => { if (r.month) monthSet.add(r.month); });
+            } catch (e) {}
+        }
+        return [...monthSet].sort().reverse();
+    }
+
+    async function updateCenterListAllStatus() {
+        const centerMonths = await getAvailableCenterMonths();
+        const dataMonths = await getAllDataMonths();
+        const dataMonthSet = new Set(dataMonths);
+        const map = await getCenterTypesMap();
+        if (centerMonths.length === 0 && dataMonths.length === 0) {
+            updateCenterListStatus('未上传任何中心名单，系统将使用默认名单');
+            return;
+        }
+        let html = '<div style="display:flex;flex-direction:column;gap:6px;">';
+        // 按中心名单的月份循环，确保所有已上传的名单都显示
+        centerMonths.forEach(m => {
+            const types = map[m];
+            const isActive = m === currentCenterTypesMonth ? '<span style="color:var(--yuantong-purple);font-weight:600;">[当前使用]</span>' : '';
+            const hasData = dataMonthSet.has(m);
+            const dataBadge = hasData ? '' : ' <span style="color:var(--yuantong-red);font-size:12px;">(无考核数据)</span>';
+            if (types && Object.keys(types).length > 0) {
+                const online = Object.values(types).filter(v => v === 'online').length;
+                const total = Object.keys(types).length;
+                html += `<div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-weight:600;">${m}</span>：${online} 线上 / ${total - online} 非线上 ${isActive}${dataBadge}
+                </div>`;
+            }
+        });
+        // 有考核数据但没有中心名单的月份，也显示提醒
+        dataMonths.forEach(m => {
+            if (!centerMonths.includes(m)) {
+                html += `<div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-weight:600;">${m}</span>：<span style="color:var(--yuantong-red);">⚠️ 缺少中心名单</span>
+                </div>`;
+            }
+        });
+        html += '</div>';
+        updateCenterListStatus(html);
+
+        // 同时更新上传页面 slot 状态
+        const slotEl = document.getElementById('slot-centerList');
+        const statusEl = document.getElementById('status-centerList');
+        const badgeEl = document.getElementById('badge-centerList');
+        if (centerMonths.length > 0) {
+            if (slotEl) slotEl.classList.add('uploaded');
+            if (statusEl) statusEl.textContent = `已上传: ${centerMonths.join(', ')}`;
+            if (badgeEl) { badgeEl.textContent = '✓'; badgeEl.className = 'slot-badge done'; }
+        } else {
+            if (slotEl) slotEl.classList.remove('uploaded');
+            if (statusEl) statusEl.textContent = '未上传';
+            if (badgeEl) { badgeEl.textContent = '待传'; badgeEl.className = 'slot-badge pending'; }
+        }
+    }
     
+    // 上传后自动保存到 IndexedDB（不立即计算得分）
+    async function autoProcessAfterUpload() {
+        const dataGroups = { headcount: [], performance: [], salary: [], attendance: [], absence: [], overtime: [], undertime: [], managerSpan: [], logisticsRatio: [], leaveRecord: [] };
+        for (const fd of uploadedFiles) {
+            if (fd.success) {
+                if (fd.type === 'performance') {
+                    fd.data.forEach(row => { if (fd.job) row.job = fd.job; });
+                    fd.data.forEach(row => dataGroups.performance.push(row));
+                } else if (dataGroups[fd.type]) {
+                    fd.data.forEach(row => dataGroups[fd.type].push(row));
+                }
+            }
+        }
+        for (const [type, data] of Object.entries(dataGroups)) {
+            if (data.length) await storeData(type, data);
+        }
+        // 清空缓存（下次查看核算时重新计算）
+        try { await db.cachedStats.clear(); } catch(e) {}
+        cachedStats = {};
+        // 更新页面状态显示
+        await updateMonthSelectors();
+        await updateDataStatus();
+        renderSettings();
+    }
+
     async function handleSlotUpload(file, type, job) {
         showLoading(`解析 ${file.name}...`);
         
@@ -3850,8 +3986,17 @@
             }
             if (badgeEl) { badgeEl.textContent = '✓'; badgeEl.className = 'slot-badge done'; }
 
-            // 上传后刷新月份下拉框
-            try { await loadMonthOptions(); } catch(e) {}
+            // 后台异步保存到 IndexedDB，不阻塞 UI
+            setTimeout(async () => {
+                try {
+                    const dataToSave = result.type === 'performance' 
+                        ? result.data.map(row => ({ ...row, job: result.job }))
+                        : result.data;
+                    await storeData(result.type, dataToSave, result.job);
+                    await updateDataStatus();
+                    await updateMonthSelectors();
+                } catch(e) { console.error('保存失败:', e); }
+            }, 10);
         } else {
             if (slotEl) { slotEl.classList.remove('uploaded'); }
             if (statusEl) { statusEl.textContent = `失败: ${result.error}`; statusEl.style.color = '#991B1B'; }
@@ -3862,16 +4007,21 @@
     }
     
     async function loadStatsForMonth(month) {
+        // 自动切换到对应月份的中心名单
+        if (month !== currentCenterTypesMonth) {
+            await loadCenterTypesForMonth(month);
+        }
+
         const stats = await calculateAllStats(month);
         cachedStats[month] = stats;
-        
+
         let prevStats = null;
         const prevMonth = getPrevMonth(month);
         if (prevMonth) {
             prevStats = await calculateAllStats(prevMonth);
             cachedStats[prevMonth] = prevStats;
         }
-        
+
         renderDashboard(stats, prevStats);
         renderOnlineDetailTable();
         renderOfflineDetailTable();
@@ -3886,7 +4036,14 @@
                     if (remoteSettings.provinceToRegion) {
                         PROVINCE_TO_REGION = { ...PROVINCE_TO_REGION, ...remoteSettings.provinceToRegion };
                     }
-                    if (remoteSettings.centerTypes && Object.keys(remoteSettings.centerTypes).length > 0) {
+                    if (remoteSettings.centerTypesMap) {
+                        try { await saveCenterTypesMap(remoteSettings.centerTypesMap); } catch (e) {}
+                        const mths = Object.keys(remoteSettings.centerTypesMap).sort().reverse();
+                        if (mths.length > 0) {
+                            centerTypes = remoteSettings.centerTypesMap[mths[0]];
+                            currentCenterTypesMonth = mths[0];
+                        }
+                    } else if (remoteSettings.centerTypes && Object.keys(remoteSettings.centerTypes).length > 0) {
                         centerTypes = remoteSettings.centerTypes;
                     }
                 }
@@ -3898,17 +4055,28 @@
         try {
             const savedRegion = await db.settings.get('provinceToRegion');
             if (savedRegion) PROVINCE_TO_REGION = { ...PROVINCE_TO_REGION, ...savedRegion.value };
-            
-            const savedTypes = await db.settings.get('centerTypes');
-            if (savedTypes && Object.keys(savedTypes.value).length > 0) {
-                centerTypes = savedTypes.value;
-            } else if (!FIREBASE_ENABLED || Object.keys(centerTypes).length === 0) {
-                // No remote settings, use default online centers list
-                centerTypes = {};
-                DEFAULT_ONLINE_CENTERS.forEach(c => { centerTypes[c] = 'online'; });
+
+            // 加载多月份中心名单
+            const map = await getCenterTypesMap();
+            const months = Object.keys(map).sort().reverse();
+            if (months.length > 0) {
+                centerTypes = map[months[0]];
+                currentCenterTypesMonth = months[0];
+            } else {
+                // 兼容旧格式：尝试读取单一 centerTypes
+                const savedTypes = await db.settings.get('centerTypes');
+                if (savedTypes && Object.keys(savedTypes.value).length > 0) {
+                    centerTypes = savedTypes.value;
+                    // 迁移到新的多月份格式
+                    const fallbackMonth = DATA_MONTH || '2026-05';
+                    await saveCenterTypesForMonth(fallbackMonth, centerTypes);
+                    currentCenterTypesMonth = fallbackMonth;
+                } else if (!FIREBASE_ENABLED || Object.keys(centerTypes).length === 0) {
+                    centerTypes = {};
+                    DEFAULT_ONLINE_CENTERS.forEach(c => { centerTypes[c] = 'online'; });
+                }
             }
         } catch (e) {
-            //出错时也使用默认名单
             if (Object.keys(centerTypes).length === 0) {
                 centerTypes = {};
                 DEFAULT_ONLINE_CENTERS.forEach(c => { centerTypes[c] = 'online'; });
@@ -4028,25 +4196,26 @@
                 const clSheet = clWb.Sheets[clWb.SheetNames[0]];
                 const clData = XLSX.utils.sheet_to_json(clSheet, { raw: false, defval: '' });
                 if (clData.length > 0) {
-                    centerTypes = {};
+                    const newTypes = {};
                     let onlineCount = 0, offlineCount = 0;
                     clData.forEach(row => {
                         const name = (row['中心名称'] || row['中心'] || '').toString().trim();
                         const typeStr = (row['中心类型'] || row['类型'] || '').toString().trim();
                         if (!name) return;
                         if (typeStr === '线上' || typeStr === 'online') {
-                            centerTypes[name] = 'online'; onlineCount++;
+                            newTypes[name] = 'online'; onlineCount++;
                         } else if (typeStr === '非线上' || typeStr === 'offline') {
-                            centerTypes[name] = 'offline'; offlineCount++;
+                            newTypes[name] = 'offline'; offlineCount++;
                         }
                     });
-                    try { await db.settings.put({ key: 'centerTypes', value: centerTypes }); } catch (e) {}
+                    await saveCenterTypesForMonth(DATA_MONTH, newTypes);
                     console.log('[自动加载] ✅ 中心名单已加载: ' + onlineCount + '线上, ' + offlineCount + '非线上');
                 }
             } else {
                 console.warn('[自动加载] 中心名单文件未找到，使用默认线上中心列表');
-                centerTypes = {};
-                DEFAULT_ONLINE_CENTERS.forEach(c => { centerTypes[c] = 'online'; });
+                const defaultTypes = {};
+                DEFAULT_ONLINE_CENTERS.forEach(c => { defaultTypes[c] = 'online'; });
+                await saveCenterTypesForMonth(DATA_MONTH, defaultTypes);
             }
         } catch (e) {
             console.warn('[自动加载] 中心名单加载失败:', e.message);
@@ -4105,7 +4274,10 @@
         await updateMonthSelectors();
         initEventHandlers();
         renderSettings();
-        
+
+        // 初始化中心名单状态显示
+        await updateCenterListAllStatus();
+
         if (currentMonth) await loadStatsForMonth(currentMonth);
         
         window.addEventListener('resize', () => {
