@@ -1919,7 +1919,21 @@
         if (match = dateStr.match(/^(\d{4})年(\d{1,2})月/)) {
             return `${match[1]}-${String(match[2]).padStart(2, '0')}`;
         }
-        return dateStr;
+        // 英文月份缩写：Jun-26, Jun/26 等
+        const engMonthMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+        if (match = dateStr.match(/^([a-z]{3})[-/](\d{2})$/i)) {
+            const mm = engMonthMap[match[1].toLowerCase()];
+            if (mm) {
+                let yy = match[2];
+                if (yy.length === 2) {
+                    yy = (parseInt(yy) >= 50 ? '19' : '20') + yy;
+                }
+                return `${yy}-${mm}`;
+            }
+        }
+        // 无法识别的格式，返回 null（不存脏数据）
+        console.warn(`[normalizeMonth] 无法识别的月份格式: "${dateStr}"，已跳过`);
+        return null;
     }
 
     // ========== 中心名单多月份管理 ==========
@@ -3366,13 +3380,13 @@
             }
         }
         
-        // 从所有表中收集月份
+        // 从所有表中收集月份（只保留 YYYY-MM 格式）
         const allTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
         const monthSet = new Set();
         for (const t of allTables) {
             try {
                 const data = await db[t].toArray();
-                data.forEach(r => { if (r.month) monthSet.add(r.month); });
+                data.forEach(r => { if (r.month && /^20\d{2}-\d{2}$/.test(r.month)) monthSet.add(r.month); });
             } catch (e) {}
         }
         months = [...monthSet].sort().reverse();
