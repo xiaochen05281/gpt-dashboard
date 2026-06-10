@@ -262,8 +262,6 @@
         .config-group-title .icon { font-size: 18px; }
         .export-btn { width: 100%; padding: 7px; background: rgba(255,215,0,0.08); color: #FFD700; border: 1px solid rgba(255,215,0,0.3); border-radius: 6px; font-size: 11px; cursor: pointer; margin-top: 6px; transition: all 0.2s; }
         .export-btn:hover { background: rgba(255,215,0,0.18); }
-        .month-end-row { background: rgba(147, 51, 234, 0.08); font-weight: 600; }
-        .month-end-row td:first-child { border-left: 3px solid #9333ea; }
     </style>
 </head>
 <body>
@@ -2410,12 +2408,7 @@
                 }
             }
             
-            // 自动提取岗位信息：优先岗位类型 → 岗位名称 → 上传时指定的job
-            const jobFromData = row['岗位类型'] || row['岗位名称'] || row['岗位'] || '';
-            if (jobFromData) {
-                record['岗位名称'] = jobFromData;
-                record['job'] = jobFromData;
-            } else if (job) {
+            if (job) {
                 record['job'] = job;
             }
             
@@ -2610,7 +2603,7 @@
                     const dev = parseFloat(row['目标偏离（%）'] || row['目标偏离(%)'] || 0);
                     return dev >= SCORING_CONFIG.online.perfAbnormal.threshold;
                 });
-                const perfCount = new Set(perfAbnormal.map(r => r['岗位名称'] || r['岗位类型'] || r['岗位'] || r['job'])).size;
+                const perfCount = new Set(perfAbnormal.map(r => r['岗位名称'] || r['job'])).size;
                 cs.indicators.绩效异常岗位 = { count: perfCount, deduction: Math.min(SCORING_CONFIG.online.perfAbnormal.max, perfCount * SCORING_CONFIG.online.perfAbnormal.perItem), max: SCORING_CONFIG.online.perfAbnormal.max };
                 
                 // 指标2: 工资偏高 - 日均覆盖率口径
@@ -2650,16 +2643,14 @@
                 
                 // 指标5: 工时过高 - 日均覆盖率口径
                 const otCoverage = calcDailyAvgCoverage(
-                    otByCenter[center] || [], '工号', r => (parseInt(r['超过12.5h天数']) || 0) >= 7, hc.monthEnd
+                    otByCenter[center] || [], '工号', () => true, hc.monthEnd
                 );
-                const otFiltered = (otByCenter[center] || []).filter(r => (parseInt(r['超过12.5h天数']) || 0) >= 7);
-                const otCount = new Set(otFiltered.map(r => r['工号'])).size;
+                const otCount = new Set((otByCenter[center] || []).map(r => r['工号'])).size;
                 const otThreshold = SCORING_CONFIG.online.overtime.coverageThreshold / 100;
                 cs.indicators.工时过高 = { count: otCount, coverage: otCoverage, deduction: Math.min(SCORING_CONFIG.online.overtime.max, Math.max(0, Math.floor((otCoverage - otThreshold) * 100)) * SCORING_CONFIG.online.overtime.perPercent), max: SCORING_CONFIG.online.overtime.max };
                 
                 // 指标6: 工时偏低
-                const utFiltered = (utByCenter[center] || []).filter(r => (parseInt(r['低于8h天数']) || 0) >= 7);
-                const utCount = new Set(utFiltered.map(r => r['工号'])).size;
+                const utCount = new Set((utByCenter[center] || []).map(r => r['工号'])).size;
                 cs.indicators.工时偏低 = { count: utCount, deduction: Math.min(SCORING_CONFIG.online.undertime.max, utCount * SCORING_CONFIG.online.undertime.perPerson), max: SCORING_CONFIG.online.undertime.max };
                 
             } else {
@@ -2683,15 +2674,13 @@
                 cs.indicators.连续未出勤 = { count: absCount, deduction: Math.min(SCORING_CONFIG.offline.absContinuous.max, absCount * SCORING_CONFIG.offline.absContinuous.perPerson), max: SCORING_CONFIG.offline.absContinuous.max };
                 
                 const otCoverage = calcDailyAvgCoverage(
-                    otByCenter[center] || [], '工号', r => (parseInt(r['超过12.5h天数']) || 0) >= 7, hc.monthEnd
+                    otByCenter[center] || [], '工号', () => true, hc.monthEnd
                 );
-                const otFiltered = (otByCenter[center] || []).filter(r => (parseInt(r['超过12.5h天数']) || 0) >= 7);
-                const otCount = new Set(otFiltered.map(r => r['工号'])).size;
+                const otCount = new Set((otByCenter[center] || []).map(r => r['工号'])).size;
                 const otThreshold = SCORING_CONFIG.offline.overtime.coverageThreshold / 100;
                 cs.indicators.工时过高 = { count: otCount, coverage: otCoverage, deduction: Math.min(SCORING_CONFIG.offline.overtime.max, Math.max(0, Math.floor((otCoverage - otThreshold) * 100)) * SCORING_CONFIG.offline.overtime.perPercent), max: SCORING_CONFIG.offline.overtime.max };
                 
-                const utFiltered = (utByCenter[center] || []).filter(r => (parseInt(r['低于8h天数']) || 0) >= 7);
-                const utCount = new Set(utFiltered.map(r => r['工号'])).size;
+                const utCount = new Set((utByCenter[center] || []).map(r => r['工号'])).size;
                 cs.indicators.工时偏低 = { count: utCount, deduction: Math.min(SCORING_CONFIG.offline.undertime.max, utCount * SCORING_CONFIG.offline.undertime.perPerson), max: SCORING_CONFIG.offline.undertime.max };
             }
             
@@ -3936,24 +3925,6 @@
 
     async function handleSlotUpload(file, type, job) {
         showLoading(`解析 ${file.name}...`);
-        // 自动从文件名提取岗位（绩效异常岗位专用）
-        if (!job && type === 'performance') {
-            const nameWithoutExt = file.name.replace(/\.[^.]+$/, '');
-            // 已知岗位列表
-            const knownJobs = ['装车岗', '卸车岗', '倒包岗', '供件岗', '封包岗', '分拣岗', '扫描岗'];
-            for (const j of knownJobs) {
-                if (nameWithoutExt.includes(j)) {
-                    job = j;
-                    break;
-                }
-            }
-            // 通用方案：取文件名中第一个"-"之前的部分
-            if (!job) {
-                const match = nameWithoutExt.match(/^([^-]+)-/);
-                if (match) job = match[1];
-            }
-        }
-
         
         // 预扫描月份
         window._currentUploadMonth = null;
@@ -4576,39 +4547,39 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
         const results = [];
         
         // 1. 绩效异常岗位 - 按 中心+岗位 去重
-        results.push(calcResolution(perfData, '绩效异常岗位', '岗位',
-            row => `${normalizeCenterName(row['center'] || '')}|${row['岗位名称'] || row['岗位类型'] || row['岗位'] || row['job'] || ''}`,
-            row => parseFloat(row['目标偏离（%）'] || row['目标偏离(%)'] || 0) >= (SCORING_CONFIG.online?.perfAbnormal?.threshold || 10), true
+        results.push(calcResolution(perfData, '绩效异常岗位', '岗位', 
+            row => `${normalizeCenterName(row['center'] || '')}|${row['岗位名称'] || row['job'] || ''}`,
+            row => parseFloat(row['目标偏离（%）'] || row['目标偏离(%)'] || 0) >= (SCORING_CONFIG.online?.perfAbnormal?.threshold || 10)
         ));
         
         // 2. 工资偏高 - 按 中心+工号 去重
         results.push(calcResolution(salaryData, '工资偏高人员', '人',
             row => `${normalizeCenterName(row['center'] || '')}|${row['工号'] || ''}`,
-            row => parseFloat(row['目标偏离（%）'] || row['目标偏离(%)'] || 0) > 0 || parseFloat(row['均值偏离（%）'] || row['均值偏离(%)'] || 0) > 0, true
+            row => parseFloat(row['目标偏离（%）'] || row['目标偏离(%)'] || 0) > 0 || parseFloat(row['均值偏离（%）'] || row['均值偏离(%)'] || 0) > 0
         ));
         
         // 3. 连续出勤异常 - 按 中心+工号 去重
         results.push(calcResolution(attData, '连续出勤异常', '人',
             row => `${normalizeCenterName(row['center'] || '')}|${row['工号'] || ''}`,
-            row => parseInt(row['连续出勤天数']) >= 7, true
+            row => parseInt(row['连续出勤天数']) >= 7
         ));
         
         // 4. 连续未出勤 - 按 中心+工号 去重（已剔除有效请假）
         results.push(calcResolution(filteredAbsData, '连续未出勤', '人',
             row => `${normalizeCenterName(row['center'] || '')}|${row['工号'] || ''}`,
-            row => parseInt(row['连续未出勤天数']) >= 3, true
+            row => parseInt(row['连续未出勤天数']) >= 3
         ));
         
         // 5. 工时过低 - 按 中心+工号 去重
         results.push(calcResolution(utData, '工时过低', '人',
             row => `${normalizeCenterName(row['center'] || '')}|${row['工号'] || ''}`,
-            row => (parseInt(row['低于8h天数']) || 0) >= 7, true
+            () => true
         ));
         
         // 6. 工时过高 - 按 中心+工号 去重
         results.push(calcResolution(otData, '工时过高', '人',
             row => `${normalizeCenterName(row['center'] || '')}|${row['工号'] || ''}`,
-            row => (parseInt(row['超过12.5h天数']) || 0) >= 7, true
+            () => true
         ));
         
         // 7. 组长主管管幅异常 - 按 中心 去重（中心级指标，快照日不在预警即解决）
@@ -4659,7 +4630,6 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
         // 生成该月每个周五的日期列表
         const fridays = [];
         const lastDay = new Date(yy, mm, 0).getDate(); // 月末日期
-        const lastDayStr = `${yy}-${String(mm).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
         for (let d = 1; d <= lastDay; d++) {
             const dt = new Date(yy, mm - 1, d);
             if (dt.getDay() === 5) { // 周五
@@ -4670,10 +4640,7 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
                 }
             }
         }
-        // 追加月末最后一天（如果最后一天不是周五的话）
-        if (!fridays.includes(lastDayStr) && lastDayStr >= dates[0] && lastDayStr <= dates[dates.length - 1]) {
-            fridays.push(lastDayStr);
-        }
+        // 只取到最后一个周五，不在周五之后追加额外数据日
         
         // 按周分段计算：每段从月初到对应周五（含）
         // "已解决"判定：该key在最近连续2个数据日都不在预警名单中，才算真正解决
@@ -4744,9 +4711,8 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
             const resolved = cumulTotal - unresolved;
             const rate = cumulTotal > 0 ? parseFloat(((1 - unresolved / cumulTotal) * 100).toFixed(1)) : 0;
             
-            const isMonthEnd = (friDate === lastDayStr);
             weeklyData.push({
-                weekLabel: isMonthEnd ? `至${friDate.slice(5)} (月末)` : `至${friDate.slice(5)}`,
+                weekLabel: `至${friDate.slice(5)}`,
                 friDate,
                 cumulTotal,
                 unresolved,
@@ -4801,8 +4767,7 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
                     const cl = trulyUnresolved.size;
                     const cr = cm - cl;
                     const cRate = cm > 0 ? parseFloat(((1 - cl / cm) * 100).toFixed(1)) : 0;
-                    const isMonthEnd = (friDate === lastDayStr);
-                    centerWeekly.push({ center, weekLabel: isMonthEnd ? `至${friDate.slice(5)} (月末)` : `至${friDate.slice(5)}`, friDate, cumulTotal: cm, unresolved: cl, resolved: cr, rate: cRate });
+                    centerWeekly.push({ center, weekLabel: `至${friDate.slice(5)}`, friDate, cumulTotal: cm, unresolved: cl, resolved: cr, rate: cRate });
                 } else {
                     // 人员级指标：用该中心自己的数据日做连续2日脱离判定
                     const centerDatesUpTo = dates.filter(d => d <= friDate && (byDate[d] || []).some(r => r['center'] === center));
@@ -4839,8 +4804,7 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
                     const cr = cm - cl;
                     const cRate = cm > 0 ? parseFloat(((1 - cl / cm) * 100).toFixed(1)) : 0;
                     if (cm > 0 || cl > 0) {
-                        const isMonthEnd = (friDate === lastDayStr);
-                        centerWeekly.push({ center, weekLabel: isMonthEnd ? `至${friDate.slice(5)} (月末)` : `至${friDate.slice(5)}`, friDate, cumulTotal: cm, unresolved: cl, resolved: cr, rate: cRate });
+                        centerWeekly.push({ center, weekLabel: `至${friDate.slice(5)}`, friDate, cumulTotal: cm, unresolved: cl, resolved: cr, rate: cRate });
                     }
                 }
             });
@@ -4939,8 +4903,7 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
                     else changeHtml = `<span style="color:var(--gray-500);">—</span>`;
                 }
                 const safeType = r.typeName.replace(/'/g, "\\'");
-                const isMonthEndRow = w.weekLabel.includes('月末');
-                html += `<tr class="clickable-row${isMonthEndRow ? ' month-end-row' : ''}" onclick="showAlertWeeklyDetail('${safeType}','${w.friDate}')">
+                html += `<tr class="clickable-row" onclick="showAlertWeeklyDetail('${safeType}','${w.friDate}')">
                     <td>${idx === 0 ? '<strong>' + r.typeName + '</strong>' : ''}</td>
                     <td>${idx === 0 ? r.dimension : ''}</td>
                     <td>${w.weekLabel} <span style="color:var(--yuantong-purple);font-size:11px;">▼</span></td>

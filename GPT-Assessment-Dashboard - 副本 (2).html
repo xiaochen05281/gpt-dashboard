@@ -2650,16 +2650,14 @@
                 
                 // 指标5: 工时过高 - 日均覆盖率口径
                 const otCoverage = calcDailyAvgCoverage(
-                    otByCenter[center] || [], '工号', r => (parseInt(r['超过12.5h天数']) || 0) >= 7, hc.monthEnd
+                    otByCenter[center] || [], '工号', () => true, hc.monthEnd
                 );
-                const otFiltered = (otByCenter[center] || []).filter(r => (parseInt(r['超过12.5h天数']) || 0) >= 7);
-                const otCount = new Set(otFiltered.map(r => r['工号'])).size;
+                const otCount = new Set((otByCenter[center] || []).map(r => r['工号'])).size;
                 const otThreshold = SCORING_CONFIG.online.overtime.coverageThreshold / 100;
                 cs.indicators.工时过高 = { count: otCount, coverage: otCoverage, deduction: Math.min(SCORING_CONFIG.online.overtime.max, Math.max(0, Math.floor((otCoverage - otThreshold) * 100)) * SCORING_CONFIG.online.overtime.perPercent), max: SCORING_CONFIG.online.overtime.max };
                 
                 // 指标6: 工时偏低
-                const utFiltered = (utByCenter[center] || []).filter(r => (parseInt(r['低于8h天数']) || 0) >= 7);
-                const utCount = new Set(utFiltered.map(r => r['工号'])).size;
+                const utCount = new Set((utByCenter[center] || []).map(r => r['工号'])).size;
                 cs.indicators.工时偏低 = { count: utCount, deduction: Math.min(SCORING_CONFIG.online.undertime.max, utCount * SCORING_CONFIG.online.undertime.perPerson), max: SCORING_CONFIG.online.undertime.max };
                 
             } else {
@@ -2683,15 +2681,13 @@
                 cs.indicators.连续未出勤 = { count: absCount, deduction: Math.min(SCORING_CONFIG.offline.absContinuous.max, absCount * SCORING_CONFIG.offline.absContinuous.perPerson), max: SCORING_CONFIG.offline.absContinuous.max };
                 
                 const otCoverage = calcDailyAvgCoverage(
-                    otByCenter[center] || [], '工号', r => (parseInt(r['超过12.5h天数']) || 0) >= 7, hc.monthEnd
+                    otByCenter[center] || [], '工号', () => true, hc.monthEnd
                 );
-                const otFiltered = (otByCenter[center] || []).filter(r => (parseInt(r['超过12.5h天数']) || 0) >= 7);
-                const otCount = new Set(otFiltered.map(r => r['工号'])).size;
+                const otCount = new Set((otByCenter[center] || []).map(r => r['工号'])).size;
                 const otThreshold = SCORING_CONFIG.offline.overtime.coverageThreshold / 100;
                 cs.indicators.工时过高 = { count: otCount, coverage: otCoverage, deduction: Math.min(SCORING_CONFIG.offline.overtime.max, Math.max(0, Math.floor((otCoverage - otThreshold) * 100)) * SCORING_CONFIG.offline.overtime.perPercent), max: SCORING_CONFIG.offline.overtime.max };
                 
-                const utFiltered = (utByCenter[center] || []).filter(r => (parseInt(r['低于8h天数']) || 0) >= 7);
-                const utCount = new Set(utFiltered.map(r => r['工号'])).size;
+                const utCount = new Set((utByCenter[center] || []).map(r => r['工号'])).size;
                 cs.indicators.工时偏低 = { count: utCount, deduction: Math.min(SCORING_CONFIG.offline.undertime.max, utCount * SCORING_CONFIG.offline.undertime.perPerson), max: SCORING_CONFIG.offline.undertime.max };
             }
             
