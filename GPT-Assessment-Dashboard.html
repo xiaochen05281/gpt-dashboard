@@ -2695,6 +2695,16 @@
             }
         });
         
+        // 【新增】原始出勤数据索引（剔除前的）—— 用于计算每个中心的剔除人数
+        const rawAttByCenter = {};
+        attendanceData.forEach(row => {
+            const c = row['center'] || (row['中心'] ? normalizeCenterName(String(row['中心'])) : '');
+            if (c) {
+                if (!rawAttByCenter[c]) rawAttByCenter[c] = [];
+                rawAttByCenter[c].push(row);
+            }
+        });
+        
         const absByCenter = {};
         filteredAbsenceData.forEach(row => {
             if (row['center']) {
@@ -2785,6 +2795,11 @@
                 
                 // 指标3: 连续出勤异常 - 日均覆盖率口径
                 const attData = attByCenter[center] || [];
+                const rawAttData = rawAttByCenter[center] || [];
+                // 剔除人数 = 原始总记录数 - 剔除后剩余记录数（按去重工号更准确）
+                const rawAttEmps = new Set(rawAttData.map(r => r['工号']));
+                const afterAttEmps = new Set(attData.map(r => r['工号']));
+                const attExcludeCount = Math.max(0, rawAttEmps.size - afterAttEmps.size);
                 const att30Plus = attData.filter(r => parseInt(r['连续出勤天数']) >= SCORING_CONFIG.online.attContinuous.severeDays);
                 const att30Count = new Set(att30Plus.map(r => r['工号'])).size;
                 const attCoverage = calcDailyAvgCoverage(
@@ -2795,7 +2810,7 @@
                 const attAbnormal = attData.filter(r => parseInt(r['连续出勤天数']) >= SCORING_CONFIG.online.attContinuous.triggerDays);
                 const attCount = attAbnormal.length;
                 const attThreshold = SCORING_CONFIG.online.attContinuous.coverageThreshold / 100;
-                cs.indicators.连续出勤异常 = { count: attCount, count30: att30Count, coverage: attCoverage, deduction: Math.min(SCORING_CONFIG.online.attContinuous.max, Math.max(0, Math.floor((attCoverage - attThreshold) * 100)) * SCORING_CONFIG.online.attContinuous.perPercent + att30Count * SCORING_CONFIG.online.attContinuous.severePerPerson), max: SCORING_CONFIG.online.attContinuous.max };
+                cs.indicators.连续出勤异常 = { count: attCount, count30: att30Count, coverage: attCoverage, excludeCount: attExcludeCount, deduction: Math.min(SCORING_CONFIG.online.attContinuous.max, Math.max(0, Math.floor((attCoverage - attThreshold) * 100)) * SCORING_CONFIG.online.attContinuous.perPercent + att30Count * SCORING_CONFIG.online.attContinuous.severePerPerson), max: SCORING_CONFIG.online.attContinuous.max };
                 
                 // 指标4: 连续未出勤
                 const absData = absByCenter[center] || [];
@@ -3072,7 +3087,7 @@
                     <td><span class="region-tag ${getRegionClass(getRegionForProvince(c.province))}">${c.province}</span></td>
                     <td class="${ind.绩效异常岗位?.deduction > 0 ? 'score-negative' : ''}">${ind.绩效异常岗位?.deduction || 0}/${ind.绩效异常岗位?.max || 25}<br><small>${ind.绩效异常岗位?.count || 0}岗</small></td>
                     <td class="${ind.工资偏高人员?.deduction > 0 ? 'score-negative' : ''}">${ind.工资偏高人员?.deduction || 0}/${ind.工资偏高人员?.max || 15}<br><small>${((ind.工资偏高人员?.coverage || 0) * 100).toFixed(1)}%</small></td>
-                    <td class="${ind.连续出勤异常?.deduction > 0 ? 'score-negative' : ''}">${ind.连续出勤异常?.deduction || 0}/${ind.连续出勤异常?.max || 25}<br><small>${ind.连续出勤异常?.count || 0}人</small></td>
+                    <td class="${ind.连续出勤异常?.deduction > 0 ? 'score-negative' : ''}">${ind.连续出勤异常?.deduction || 0}/${ind.连续出勤异常?.max || 25}<br><small>${ind.连续出勤异常?.count || 0}人${ind.连续出勤异常?.excludeCount ? ' / <span style="color:#e74c3c">剔除'+ind.连续出勤异常.excludeCount+'人</span>' : ''}</small></td>
                     <td class="${ind.连续未出勤?.deduction > 0 ? 'score-negative' : ''}">${ind.连续未出勤?.deduction || 0}/${ind.连续未出勤?.max || 25}<br><small>${ind.连续未出勤?.count || 0}人</small></td>
                     <td class="${ind.工时过高?.deduction > 0 ? 'score-negative' : ''}">${ind.工时过高?.deduction || 0}/${ind.工时过高?.max || 5}<br><small>${((ind.工时过高?.coverage || 0) * 100).toFixed(1)}%</small></td>
                     <td class="${ind.工时偏低?.deduction > 0 ? 'score-negative' : ''}">${ind.工时偏低?.deduction || 0}/${ind.工时偏低?.max || 5}<br><small>${ind.工时偏低?.count || 0}人</small></td>
@@ -3205,6 +3220,7 @@
             if (val.count !== undefined) detail += `${val.count}人`;
             if (val.count30 !== undefined) detail += ` / ≥30天: ${val.count30}人`;
             if (val.coverage !== undefined) detail += ` / 覆盖率: ${(val.coverage * 100).toFixed(2)}%`;
+            if (val.excludeCount !== undefined && val.excludeCount > 0) detail += ` <span style="color:#e74c3c;font-weight:600">/ 剔除${val.excludeCount}人</span>`;
             indRows += `<tr>
                 <td>${name}</td>
                 <td>${val.max}</td>
@@ -4360,24 +4376,6 @@
             window._currentUploadMonth = dbMonth;
             console.log('[自动加载] === 加载 ' + monthLabel + ' 数据 ===');
 
-            // 【新增】加载前先清除该月份的旧数据（防止手动上传错误数据残留）
-            console.log('[自动加载] 清除 ' + dbMonth + ' 旧数据...');
-            try {
-                const _types = ['headcount','salary','attendance','absence','attendanceExclude','absenceExclude','leaveRecord','overtime','undertime','managerSpan','performance'];
-                for (const _t of _types) {
-                    const _table = db[_t];
-                    if (!_table) continue;
-                    const _old = await _table.where('month').equals(dbMonth).toArray();
-                    if (_old.length > 0) {
-                        await _table.bulkDelete(_old.map(r => r.id));
-                        console.log('[自动加载] 清除旧数据: ' + _t + '(' + dbMonth + ') ' + _old.length + ' 条');
-                    }
-                }
-                // 同时清除该月份的缓存
-                await db.cachedStats.where('month').equals(dbMonth).delete();
-                console.log('[自动加载] ' + dbMonth + ' 旧数据清除完成');
-            } catch(e) { console.warn('[自动加载] 清除旧数据失败(可忽略):', e.message); }
-
             const fileList = getRepoFileList(monthLabel);
             for (const item of fileList) {
                 const url = item.path + item.file;
@@ -4414,10 +4412,23 @@
                         continue;
                     }
 
-                    const data = jsonData.filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
+                    const data = jsonData.filter(r => Object.values(r).some(v => v && String(v).trim() !== ''));
                     if (data.length === 0) continue;
 
-                    await storeData(detected.type, data, detected.job || null);
+                    // 【关键】下载成功后、存入前：只清除该类型+该月份的旧数据（防止残留错误数据）
+                    const _storeType = detected.type;
+                    try {
+                        const _storeTable = db[_storeType];
+                        if (_storeTable) {
+                            const _oldRows = await _storeTable.where('month').equals(dbMonth).toArray();
+                            if (_oldRows.length > 0) {
+                                await _storeTable.bulkDelete(_oldRows.map(r => r.id));
+                                console.log('[自动加载] 清除旧数据: ' + _storeType + '(' + dbMonth + ') ' + _oldRows.length + ' 条');
+                            }
+                        }
+                    } catch(_clrErr) { /* 清除失败不影响继续 */ }
+
+                    await storeData(_storeType, data, detected.job || null);
                     totalRows++;
                     console.log('[自动加载] ✅ ' + item.file + ' → ' + detected.type + (detected.job ? '/' + detected.job : '') + ' (' + data.length + ' 行)');
                 } catch (e) {
