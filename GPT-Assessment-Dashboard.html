@@ -4360,20 +4360,48 @@
             window._currentUploadMonth = dbMonth;
             console.log('[自动加载] === 加载 ' + monthLabel + ' 数据 ===');
 
+            // 【新增】加载前先清除该月份的旧数据（防止手动上传错误数据残留）
+            console.log('[自动加载] 清除 ' + dbMonth + ' 旧数据...');
+            try {
+                const _types = ['headcount','salary','attendance','absence','attendanceExclude','absenceExclude','leaveRecord','overtime','undertime','managerSpan','performance'];
+                for (const _t of _types) {
+                    const _table = db[_t];
+                    if (!_table) continue;
+                    const _old = await _table.where('month').equals(dbMonth).toArray();
+                    if (_old.length > 0) {
+                        await _table.bulkDelete(_old.map(r => r.id));
+                        console.log('[自动加载] 清除旧数据: ' + _t + '(' + dbMonth + ') ' + _old.length + ' 条');
+                    }
+                }
+                // 同时清除该月份的缓存
+                await db.cachedStats.where('month').equals(dbMonth).delete();
+                console.log('[自动加载] ' + dbMonth + ' 旧数据清除完成');
+            } catch(e) { console.warn('[自动加载] 清除旧数据失败(可忽略):', e.message); }
+
             const fileList = getRepoFileList(monthLabel);
             for (const item of fileList) {
                 const url = item.path + item.file;
                 try {
-                    const resp = await fetch(url);
+                    // 大文件(>3MB)使用60s超时，小文件30s
+                    const isBigFile = item.file.includes('连续出勤') || item.file.includes('连续未出勤') || item.file.includes('绩效');
+                    const timeoutMs = isBigFile ? 120000 : 30000;
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), timeoutMs);
+                    console.log('[自动加载] 开始下载 ' + item.file + '（超时' + (timeoutMs/1000) + 's）');
+                    const resp = await fetch(url, { signal: controller.signal });
+                    clearTimeout(timer);
                     if (!resp.ok) {
                         console.warn('[自动加载] 跳过 ' + item.file + '（' + resp.status + '）');
                         continue;
                     }
+                    console.log('[自动加载] 下载完成 ' + item.file + '，开始解析...');
                     const buffer = await resp.arrayBuffer();
+                    console.log('[自动加载] 解析中 ' + item.file + '（' + (buffer.byteLength/1024/1024).toFixed(1) + 'MB）...');
                     const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
                     const sheet = workbook.Sheets[workbook.SheetNames[0]];
                     const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false, defval: '' });
-                    if (jsonData.length === 0) continue;
+                    console.log('[自动加载] 解析完成 ' + item.file + ' (' + jsonData.length + ' 行)');
+                    if (jsonData.length === 0) { console.warn('[自动加载] ' + item.file + ' 解析后0行，跳过'); continue; }
 
                     const headers = jsonData[0];
                     const normalizedHeaders = {};
@@ -4454,6 +4482,27 @@
         }
 
         console.log('[自动加载] 完成，成功加载 ' + totalRows + ' 个文件');
+
+        // 【新增】加载后数据完整性校验 —— 防止大文件加载失败但用户不知道
+        console.log('[自动加载] 开始数据完整性校验...');
+        const _verifyMonth = monthsToLoad[monthsToLoad.length - 1].dbMonth; // 检查最早加载的月份
+        try {
+            const _attCnt = await db.attendance.where('month').equals(_verifyMonth).count();
+            const _absCnt = await db.absence.where('month').equals(_verifyMonth).count();
+            const _perfCnt = await db.performance.where('month').equals(_verifyMonth).count();
+            console.log('[数据校验] ' + _verifyMonth + ' → attendance:' + _attCnt + '条, absense:' + _absCnt + '条, performance:' + _perfCnt + '条');
+            // 连续出勤数据明显偏少（<100条 但绩效数据>0，说明attendance加载失败）
+            if (_perfCnt > 0 && _attCnt < 100) {
+                console.error('[数据校验] ⚠️ 警告：attendance 数据量异常偏少(' + _attCnt + '条），可能加载失败！');
+                // 在页面上显示警告（非alert，用页面内提示）
+                const _warnDiv = document.createElement('div');
+                _warnDiv.id = 'data-warn-tip';
+                _warnDiv.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#fff3cd;color:#856404;border:1px solid #ffeaa7;padding:12px 24px;border-radius:8px;z-index:9999;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
+                _warnDiv.innerHTML = '⚠️ 数据加载异常：连续出勤数据量偏少（' + _attCnt + '条），请按F12打开控制台查看详情，或尝试刷新页面重新加载。';
+                document.body.appendChild(_warnDiv);
+                setTimeout(() => { if(document.getElementById('data-warn-tip')) document.getElementById('data-warn-tip').remove(); }, 15000);
+            }
+        } catch(e) { console.warn('[数据校验] 校验失败:', e.message); }
 
         // 自动加载后更新所有 slot UI 和状态表格
         try {
