@@ -1816,7 +1816,7 @@
     // ============================================
     class AssessmentDB extends Dexie {
         constructor() {
-            super('GPTAssessmentDB_v1');
+            super('GPTAssessmentDB_v2');
             this.version(1).stores({
                 headcount: '++id, center, month, province, [center+month]',
                 performance: '++id, center, month, province, job, [center+month]',
