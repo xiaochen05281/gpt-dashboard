@@ -785,20 +785,6 @@
                             <span class="slot-badge pending" id="badge-absence">待传</span>
                         </div>
                         <input type="file" id="input-absence" accept=".xlsx,.xls" style="display:none;" data-type="absence">
-                        <!-- 新增：半班人员剔除（连续出勤异常用） -->
-                        <div class="upload-slot" id="slot-attendanceExclude" onclick="document.getElementById('input-attendanceExclude').click()">
-                            <span class="slot-icon">⏳</span>
-                            <div class="slot-info"><div class="slot-name">出勤半班剔除</div><div class="slot-status" id="status-attendanceExclude">未上传</div></div>
-                            <span class="slot-badge pending" id="badge-attendanceExclude">待传</span>
-                        </div>
-                        <input type="file" id="input-attendanceExclude" accept=".xlsx,.xls" style="display:none;" data-type="attendanceExclude">
-                        <!-- 新增：工伤剔除（连续未出勤用） -->
-                        <div class="upload-slot" id="slot-absenceExclude" onclick="document.getElementById('input-absenceExclude').click()">
-                            <span class="slot-icon">🚫</span>
-                            <div class="slot-info"><div class="slot-name">未出勤工伤剔除</div><div class="slot-status" id="status-absenceExclude">未上传</div></div>
-                            <span class="slot-badge pending" id="badge-absenceExclude">待传</span>
-                        </div>
-                        <input type="file" id="input-absenceExclude" accept=".xlsx,.xls" style="display:none;" data-type="absenceExclude">
                         <div class="upload-slot" id="slot-overtime" onclick="document.getElementById('input-overtime').click()">
                             <span class="slot-icon">⏰</span>
                             <div class="slot-info"><div class="slot-name">工时过高</div><div class="slot-status" id="status-overtime">未上传</div></div>
@@ -908,8 +894,6 @@
                         <button class="btn btn-secondary" id="dl-tpl-salary" style="font-size: 12px;">📥 工资偏高人员模板</button>
                         <button class="btn btn-secondary" id="dl-tpl-attendance" style="font-size: 12px;">📥 连续出勤异常模板</button>
                         <button class="btn btn-secondary" id="dl-tpl-absence" style="font-size: 12px;">📥 连续未出勤异常模板</button>
-                        <button class="btn btn-secondary" id="dl-tpl-attendanceExclude" style="font-size: 12px;">📥 出勤半班剔除模板</button>
-                        <button class="btn btn-secondary" id="dl-tpl-absenceExclude" style="font-size: 12px;">📥 未出勤工伤剔除模板</button>
                         <button class="btn btn-secondary" id="dl-tpl-overtime" style="font-size: 12px;">📥 工时过高人员模板</button>
                         <button class="btn btn-secondary" id="dl-tpl-undertime" style="font-size: 12px;">📥 工时偏低人员模板</button>
                         <button class="btn btn-secondary" id="dl-tpl-managerSpan" style="font-size: 12px;">📥 组长主管管幅异常模板</button>
@@ -937,8 +921,6 @@
                                 <tr><td>工资偏高人员</td><td>-</td><td>-</td><td>-</td></tr>
                                 <tr><td>连续出勤异常</td><td>-</td><td>-</td><td>-</td></tr>
                                 <tr><td>连续未出勤</td><td>-</td><td>-</td><td>-</td></tr>
-                                <tr><td>出勤半班剔除</td><td>-</td><td>-</td><td>-</td></tr>
-                                <tr><td>未出勤工伤剔除</td><td>-</td><td>-</td><td>-</td></tr>
                                 <tr><td>工时过高人员</td><td>-</td><td>-</td><td>-</td></tr>
                                 <tr><td>工时偏低人员</td><td>-</td><td>-</td><td>-</td></tr>
                                 <tr><td>主管组长管幅异常</td><td>-</td><td>-</td><td>-</td></tr>
@@ -1853,11 +1835,6 @@
             this.version(3).stores({
                 leaveRecord: '++id, center, month, empId, [center+month], [empId+month]'
             });
-            // v4: 剔除名单（连续出勤异常剔除半班人员、连续未出勤剔除工伤人员）
-            this.version(4).stores({
-                attendanceExclude: '++id, center, month, province, empId, name, [center+month], [empId+month]',
-                absenceExclude: '++id, center, month, province, empId, name, [center+month], [empId+month]'
-            });
         }
     }
     
@@ -1955,13 +1932,6 @@
                 }
                 return `${yy}-${mm}`;
             }
-        }
-        // 中文纯月份格式：5月、6月、12月 等（用于剔除名单Excel中的「剔除月份」列）
-        if (match = dateStr.match(/^(\d{1,2})月$/)) {
-            const mm = String(match[1]).padStart(2, '0');
-            // 使用 DATA_MONTH 的年份（如2026），确保与数据主表月份一致
-            const yy = (typeof DATA_MONTH !== 'undefined' && DATA_MONTH) ? DATA_MONTH.slice(0, 4) : new Date().getFullYear().toString();
-            return `${yy}-${mm}`;
         }
         // 无法识别的格式，返回 null（不存脏数据）
         console.warn(`[normalizeMonth] 无法识别的月份格式: "${dateStr}"，已跳过`);
@@ -2221,16 +2191,6 @@
         if (pathLower.includes('未出勤')) {
             return { type: 'absence' };
         }
-
-        // 半班人员剔除（连续出勤异常用）
-        if (pathLower.includes('半班') || pathLower.includes('半天') || (pathLower.includes('出勤') && pathLower.includes('剔除'))) {
-            return { type: 'attendanceExclude' };
-        }
-
-        // 工伤剔除（连续未出勤用）
-        if (pathLower.includes('工伤')) {
-            return { type: 'absenceExclude' };
-        }
         
         // 主管组长管幅异常
         if (pathLower.includes('管幅')) {
@@ -2290,19 +2250,7 @@
         if (headerStr.includes('连续未出勤天数')) {
             return { type: 'absence' };
         }
-
-        // 半班人员剔除（列头特征：含"需剔除原因"或"上半天班"）
-        if (headerStr.includes('需剔除原因') || headerStr.includes('上半天班') || headerStr.includes('半班')) {
-            return { type: 'attendanceExclude' };
-        }
-
-        // 工伤剔除（列头特征：含「剔除月份」或「需剔除原因」，且文件名含工伤）
-        if (headerStr.includes('剔除月份') || (headerStr.includes('需剔除原因') && !headerStr.includes('半班') && !headerStr.includes('上半天班'))) {
-            if (filenameLower.includes('工伤') || filenameLower.includes('未出勤')) {
-                return { type: 'absenceExclude' };
-            }
-        }
-
+        
         // 主管组长管幅异常
         if (headerStr.includes('管幅比') && headerStr.includes('主管组长')) {
             return { type: 'managerSpan' };
@@ -2409,74 +2357,6 @@
             if (records.length > 0) {
                 await table.bulkAdd(records);
             }
-            return records.length;
-        }
-
-        // 半班人员剔除（连续出勤异常用）- 特殊处理
-        if (type === 'attendanceExclude') {
-            const records = data.map(row => {
-                const record = {};
-                for (let key in row) {
-                    if (row[key] !== undefined && row[key] !== null) record[key] = row[key];
-                }
-                record['empId'] = String(row['工号'] || '').trim();
-                record['name'] = String(row['姓名'] || '').trim();
-                // 中心
-                const centerName = row['中心'] || '';
-                const normalized = normalizeCenterName(centerName);
-                record['center'] = normalized || centerName;
-                if (normalized) allCenters.add(normalized);
-                // 省区
-                const prov = row['省区'] || '';
-                const normProv = normalizeProvinceName(prov);
-                if (normProv) { record['province'] = normProv; allProvinces.add(normProv); }
-                // 月份：优先从「剔除月份」列读取，否则用上传月份
-                const excludeMonth = row['剔除月份'] || '';
-                record['month'] = excludeMonth ? normalizeMonth(excludeMonth) : (window._currentUploadMonth || '');
-                return record;
-            }).filter(r => r.center && r.month && r.empId);
-
-            if (records.length > 0) await table.bulkAdd(records);
-            // 清除受影响月份的统计缓存，确保下次计算时重新读取剔除名单
-            const affectedMonths = [...new Set(records.map(r => r.month).filter(Boolean))];
-            for (const m of affectedMonths) {
-                try { await db.cachedStats.where('month').equals(m).delete(); delete cachedStats[m]; } catch(e) {}
-            }
-            console.log(`[缓存清除] 出勤半班剔除数据已更新，清除月份: ${affectedMonths.join(', ')}`);
-            return records.length;
-        }
-
-        // 工伤剔除（连续未出勤用）- 特殊处理（按 工号+中心+月份 剔除）
-        if (type === 'absenceExclude') {
-            const records = data.map(row => {
-                const record = {};
-                for (let key in row) {
-                    if (row[key] !== undefined && row[key] !== null) record[key] = row[key];
-                }
-                record['empId'] = String(row['工号'] || '').trim();
-                record['name'] = String(row['姓名'] || '').trim();
-                // 中心
-                const centerName = row['中心'] || '';
-                const normalized = normalizeCenterName(centerName);
-                record['center'] = normalized || centerName;
-                if (normalized) allCenters.add(normalized);
-                // 省区
-                const prov = row['省区'] || '';
-                const normProv = normalizeProvinceName(prov);
-                if (normProv) { record['province'] = normProv; allProvinces.add(normProv); }
-                // 月份：优先从「剔除月份」列读取，否则用上传月份
-                const excludeMonth = row['剔除月份'] || '';
-                record['month'] = excludeMonth ? normalizeMonth(excludeMonth) : (window._currentUploadMonth || '');
-                return record;
-            }).filter(r => r.center && r.month && r.empId);
-
-            if (records.length > 0) await table.bulkAdd(records);
-            // 清除受影响月份的统计缓存，确保下次计算时重新读取剔除名单
-            const affectedMonthsAbs = [...new Set(records.map(r => r.month).filter(Boolean))];
-            for (const m of affectedMonthsAbs) {
-                try { await db.cachedStats.where('month').equals(m).delete(); delete cachedStats[m]; } catch(e) {}
-            }
-            console.log(`[缓存清除] 工伤剔除数据已更新，清除月份: ${affectedMonthsAbs.join(', ')}`);
             return records.length;
         }
         
@@ -2595,55 +2475,20 @@
         let leaveData = [];
         try { leaveData = await db.leaveRecord.where('month').equals(month).toArray(); } catch(e) {}
         const leaveIndex = buildLeaveIndex(leaveData);
-
-        // 加载剔除名单
-        let attExcludeList = [];   // 半班人员剔除名单（用于连续出勤异常）
-        try { attExcludeList = await db.attendanceExclude.where('month').equals(month).toArray(); } catch(e) {}
-        // 构建半班剔除索引：按 工号(empId) + 归一化中心(center) 匹配
-        const attExcludeIndex = new Set();
-        attExcludeList.forEach(r => {
-            const empId = String(r['empId'] || r['工号'] || '').trim();
-            const center = r['center'] ? normalizeCenterName(r['center']) : '';
-            if (empId && center) attExcludeIndex.add(empId + '|' + center);
-        });
-
-        let absExcludeList = [];   // 工伤剔除名单（用于连续未出勤）
-        try { absExcludeList = await db.absenceExclude.where('month').equals(month).toArray(); } catch(e) {}
-        // 构建工伤剔除索引：按 工号(empId) + 归一化中心(center) 匹配
-        const absExcludeIndex = new Set();
-        absExcludeList.forEach(r => {
-            const empId = String(r['empId'] || r['工号'] || '').trim();
-            const center = r['center'] ? normalizeCenterName(r['center']) : '';
-            if (empId && center) absExcludeIndex.add(empId + '|' + center);
-        });
-
-        // 连续出勤异常：剔除半班人员（按工号+归一化中心匹配）
-        const filteredAttendanceData = attendanceData.filter(row => {
-            const empId = String(row['工号'] || '').trim();
-            const center = normalizeCenterName(row['center'] || '') || '';
-            return !attExcludeIndex.has(empId + '|' + center);
-        });
-        console.log(`[剔除统计] 连续出勤异常: 原始${attendanceData.length}条 → 剔除半班${attendanceData.length - filteredAttendanceData.length}条 → 剩余${filteredAttendanceData.length}条`);
-
-        // 连续未出勤：先剔除有有效请假的人员，再剔除工伤人员（按工号+归一化中心匹配）
+        
+        // 连续未出勤：剔除有有效请假的人员
         const filteredAbsenceData = absenceData.filter(row => {
             const empId = String(row['工号'] || '').trim();
             const dateStr = row['数据日期'] || row['日期'] || row['统计日期'] || '';
             const date = String(dateStr).length >= 10 ? String(dateStr).slice(0, 10) : '';
-            // 先检查请假
-            if (isOnLeave(empId, date, leaveIndex)) return false;
-            // 再检查工伤剔除（按工号+归一化中心匹配）
-            const center = normalizeCenterName(row['center'] || '') || '';
-            if (absExcludeIndex.has(empId + '|' + center)) return false;
-            return true;
+            return !isOnLeave(empId, date, leaveIndex);
         });
-        console.log(`[剔除统计] 连续未出勤: 原始${absenceData.length}条 → 剔除请假/工伤${absenceData.length - filteredAbsenceData.length}条 → 剩余${filteredAbsenceData.length}条`);
         
         // 归一化center字段（调用封装函数）
         normalizeDataCenters(headcountData);
         normalizeDataCenters(performanceData);
         normalizeDataCenters(salaryData);
-        normalizeDataCenters(filteredAttendanceData);
+        normalizeDataCenters(attendanceData);
         normalizeDataCenters(filteredAbsenceData);
         normalizeDataCenters(overtimeData);
         normalizeDataCenters(undertimeData);
@@ -2688,20 +2533,10 @@
         });
         
         const attByCenter = {};
-        filteredAttendanceData.forEach(row => {
+        attendanceData.forEach(row => {
             if (row['center']) {
                 if (!attByCenter[row['center']]) attByCenter[row['center']] = [];
                 attByCenter[row['center']].push(row);
-            }
-        });
-        
-        // 【新增】原始出勤数据索引（剔除前的）—— 用于计算每个中心的剔除人数
-        const rawAttByCenter = {};
-        attendanceData.forEach(row => {
-            const c = row['center'] || (row['中心'] ? normalizeCenterName(String(row['中心'])) : '');
-            if (c) {
-                if (!rawAttByCenter[c]) rawAttByCenter[c] = [];
-                rawAttByCenter[c].push(row);
             }
         });
         
@@ -2753,9 +2588,9 @@
                     }
                 }
             }
-            const province = headcountData.find(r => r['center'] === center)?.['province'] ||
+            const province = headcountData.find(r => r['center'] === center)?.['province'] || 
                             salaryData.find(r => r['center'] === center)?.['province'] ||
-                            filteredAttendanceData.find(r => r['center'] === center)?.['province'] ||
+                            attendanceData.find(r => r['center'] === center)?.['province'] ||
                             center;
             const hc = headcountMap[center] || { monthEnd: 0, salaryCount: 0 };
             
@@ -2795,11 +2630,6 @@
                 
                 // 指标3: 连续出勤异常 - 日均覆盖率口径
                 const attData = attByCenter[center] || [];
-                const rawAttData = rawAttByCenter[center] || [];
-                // 剔除人数 = 原始总记录数 - 剔除后剩余记录数（按去重工号更准确）
-                const rawAttEmps = new Set(rawAttData.map(r => r['工号']));
-                const afterAttEmps = new Set(attData.map(r => r['工号']));
-                const attExcludeCount = Math.max(0, rawAttEmps.size - afterAttEmps.size);
                 const att30Plus = attData.filter(r => parseInt(r['连续出勤天数']) >= SCORING_CONFIG.online.attContinuous.severeDays);
                 const att30Count = new Set(att30Plus.map(r => r['工号'])).size;
                 const attCoverage = calcDailyAvgCoverage(
@@ -2810,7 +2640,7 @@
                 const attAbnormal = attData.filter(r => parseInt(r['连续出勤天数']) >= SCORING_CONFIG.online.attContinuous.triggerDays);
                 const attCount = attAbnormal.length;
                 const attThreshold = SCORING_CONFIG.online.attContinuous.coverageThreshold / 100;
-                cs.indicators.连续出勤异常 = { count: attCount, count30: att30Count, coverage: attCoverage, excludeCount: attExcludeCount, deduction: Math.min(SCORING_CONFIG.online.attContinuous.max, Math.max(0, Math.floor((attCoverage - attThreshold) * 100)) * SCORING_CONFIG.online.attContinuous.perPercent + att30Count * SCORING_CONFIG.online.attContinuous.severePerPerson), max: SCORING_CONFIG.online.attContinuous.max };
+                cs.indicators.连续出勤异常 = { count: attCount, count30: att30Count, coverage: attCoverage, deduction: Math.min(SCORING_CONFIG.online.attContinuous.max, Math.max(0, Math.floor((attCoverage - attThreshold) * 100)) * SCORING_CONFIG.online.attContinuous.perPercent + att30Count * SCORING_CONFIG.online.attContinuous.severePerPerson), max: SCORING_CONFIG.online.attContinuous.max };
                 
                 // 指标4: 连续未出勤
                 const absData = absByCenter[center] || [];
@@ -3087,7 +2917,7 @@
                     <td><span class="region-tag ${getRegionClass(getRegionForProvince(c.province))}">${c.province}</span></td>
                     <td class="${ind.绩效异常岗位?.deduction > 0 ? 'score-negative' : ''}">${ind.绩效异常岗位?.deduction || 0}/${ind.绩效异常岗位?.max || 25}<br><small>${ind.绩效异常岗位?.count || 0}岗</small></td>
                     <td class="${ind.工资偏高人员?.deduction > 0 ? 'score-negative' : ''}">${ind.工资偏高人员?.deduction || 0}/${ind.工资偏高人员?.max || 15}<br><small>${((ind.工资偏高人员?.coverage || 0) * 100).toFixed(1)}%</small></td>
-                    <td class="${ind.连续出勤异常?.deduction > 0 ? 'score-negative' : ''}">${ind.连续出勤异常?.deduction || 0}/${ind.连续出勤异常?.max || 25}<br><small>${ind.连续出勤异常?.count || 0}人${ind.连续出勤异常?.excludeCount ? ' / <span style="color:#e74c3c">剔除'+ind.连续出勤异常.excludeCount+'人</span>' : ''}</small></td>
+                    <td class="${ind.连续出勤异常?.deduction > 0 ? 'score-negative' : ''}">${ind.连续出勤异常?.deduction || 0}/${ind.连续出勤异常?.max || 25}<br><small>${ind.连续出勤异常?.count || 0}人</small></td>
                     <td class="${ind.连续未出勤?.deduction > 0 ? 'score-negative' : ''}">${ind.连续未出勤?.deduction || 0}/${ind.连续未出勤?.max || 25}<br><small>${ind.连续未出勤?.count || 0}人</small></td>
                     <td class="${ind.工时过高?.deduction > 0 ? 'score-negative' : ''}">${ind.工时过高?.deduction || 0}/${ind.工时过高?.max || 5}<br><small>${((ind.工时过高?.coverage || 0) * 100).toFixed(1)}%</small></td>
                     <td class="${ind.工时偏低?.deduction > 0 ? 'score-negative' : ''}">${ind.工时偏低?.deduction || 0}/${ind.工时偏低?.max || 5}<br><small>${ind.工时偏低?.count || 0}人</small></td>
@@ -3220,7 +3050,6 @@
             if (val.count !== undefined) detail += `${val.count}人`;
             if (val.count30 !== undefined) detail += ` / ≥30天: ${val.count30}人`;
             if (val.coverage !== undefined) detail += ` / 覆盖率: ${(val.coverage * 100).toFixed(2)}%`;
-            if (val.excludeCount !== undefined && val.excludeCount > 0) detail += ` <span style="color:#e74c3c;font-weight:600">/ 剔除${val.excludeCount}人</span>`;
             indRows += `<tr>
                 <td>${name}</td>
                 <td>${val.max}</td>
@@ -3498,8 +3327,8 @@
     // Data Status
     // ============================================
     async function updateDataStatus() {
-        const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'attendanceExclude', 'absenceExclude', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
-        const names = ['月末人数基数', '绩效异常岗位', '工资偏高人员', '连续出勤异常', '连续未出勤', '出勤半班剔除', '未出勤工伤剔除', '工时过高人员', '工时偏低人员', '主管组长管幅异常', '后勤及职能占比', '请假维护'];
+        const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
+        const names = ['月末人数基数', '绩效异常岗位', '工资偏高人员', '连续出勤异常', '连续未出勤', '工时过高人员', '工时偏低人员', '主管组长管幅异常', '后勤及职能占比', '请假维护'];
         const tbody = document.getElementById('status-tbody');
         
         const rows = await Promise.all(tables.map(async (table, idx) => {
@@ -3563,7 +3392,7 @@
         }
         
         // 从所有表中收集月份（只保留 YYYY-MM 格式）
-        const allTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'attendanceExclude', 'absenceExclude', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
+        const allTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
         const monthSet = new Set();
         for (const t of allTables) {
             try {
@@ -3642,7 +3471,7 @@
             showLoading('正在导出数据...');
             try {
                 const wb = XLSX.utils.book_new();
-                const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'attendanceExclude', 'absenceExclude', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
+                const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
                 for (const t of tables) {
                     try {
                         const rows = await db[t].toArray();
@@ -3665,7 +3494,7 @@
         document.getElementById('process-btn').addEventListener('click', async () => {
             showLoading('正在处理数据...');
             try {
-                const dataGroups = { headcount: [], performance: [], salary: [], attendance: [], absence: [], attendanceExclude: [], absenceExclude: [], overtime: [], undertime: [], managerSpan: [], logisticsRatio: [], leaveRecord: [] };
+                const dataGroups = { headcount: [], performance: [], salary: [], attendance: [], absence: [], overtime: [], undertime: [], managerSpan: [], logisticsRatio: [], leaveRecord: [] };
                 
                 for (const fd of uploadedFiles) {
                     if (fd.success) {
@@ -3838,16 +3667,6 @@
                 name: '连续未出勤异常模板',
                 headers: ['数据日期', '工号', '姓名', '岗位', '省区', '中心', '连续未出勤天数'],
                 sample: [['2026-05-20', 'YT002', '李四', '分拣岗', '福建省区', '泉州', 18]]
-            },
-            attendanceExclude: {
-                name: '出勤半班剔除模板',
-                headers: ['工号', '姓名', '省区', '中心', '剔除月份', '需剔除原因'],
-                sample: [['03628921', '葛子阳', '河北区', '肃宁', '5月', '上半天班']]
-            },
-            absenceExclude: {
-                name: '未出勤工伤剔除模板',
-                headers: ['工号', '姓名', '省区', '中心', '剔除月份', '需剔除原因'],
-                sample: [['00222623', '樊孟强', '北京区', '华北', '5月', '工伤']]
             },
             overtime: {
                 name: '工时过高人员模板',
@@ -4030,7 +3849,7 @@
 
     async function getAllDataMonths() {
         const monthSet = new Set();
-        const allTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'attendanceExclude', 'absenceExclude', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
+        const allTables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord'];
         for (const t of allTables) {
             try {
                 const data = await db[t].toArray();
@@ -4219,21 +4038,6 @@
                     await storeData(result.type, dataToSave, result.job);
                     await updateDataStatus();
                     await updateMonthSelectors();
-                    // 剔除名单数据变更后，自动刷新当前月份的统计数据
-                    if (result.type === 'attendanceExclude' || result.type === 'absenceExclude') {
-                        if (typeof currentMonth !== 'undefined' && currentMonth) {
-                            try {
-                                delete cachedStats[currentMonth];
-                                const freshStats = await calculateAllStats(currentMonth);
-                                cachedStats[currentMonth] = freshStats;
-                                let prevStats = null;
-                                const prevM = getPrevMonth(currentMonth);
-                                if (prevM) { prevStats = await calculateAllStats(prevM); cachedStats[prevM] = prevStats; }
-                                renderDashboard(freshStats, prevStats);
-                                console.log(`[自动刷新] 剔除名单更新后已重新计算 ${currentMonth} 统计`);
-                            } catch(e) { console.error('刷新统计失败:', e); }
-                        }
-                    }
                 } catch(e) { console.error('保存失败:', e); }
             }, 10);
         } else {
@@ -4346,8 +4150,6 @@
             { path: `source/5、主管组长管幅异常/`, file: `主管组长管幅-${monthLabel}.xlsx` },
             { path: `source/6、连续出勤异常/`, file: `连续出勤-${monthLabel}.xlsx` },
             { path: `source/7、连续未出勤/`, file: `连续未出勤-${monthLabel}.xlsx` },
-            { path: `source/7、连续未出勤/`, file: `未出勤工伤剔除-${monthLabel}.xlsx` },
-            { path: `source/6、连续出勤异常/`, file: `出勤半班剔除-${monthLabel}.xlsx` },
             { path: `source/8、绩效异常岗位/1、装车岗/`, file: `装车岗-${monthLabel}.xlsx` },
             { path: `source/8、绩效异常岗位/2、卸车岗/`, file: `卸车岗-${monthLabel}.xlsx` },
             { path: `source/8、绩效异常岗位/3、倒包岗/`, file: `倒包岗-${monthLabel}.xlsx` },
@@ -4380,26 +4182,16 @@
             for (const item of fileList) {
                 const url = item.path + item.file;
                 try {
-                    // 大文件(>3MB)使用60s超时，小文件30s
-                    const isBigFile = item.file.includes('连续出勤') || item.file.includes('连续未出勤') || item.file.includes('绩效');
-                    const timeoutMs = isBigFile ? 120000 : 30000;
-                    const controller = new AbortController();
-                    const timer = setTimeout(() => controller.abort(), timeoutMs);
-                    console.log('[自动加载] 开始下载 ' + item.file + '（超时' + (timeoutMs/1000) + 's）');
-                    const resp = await fetch(url, { signal: controller.signal });
-                    clearTimeout(timer);
+                    const resp = await fetch(url);
                     if (!resp.ok) {
                         console.warn('[自动加载] 跳过 ' + item.file + '（' + resp.status + '）');
                         continue;
                     }
-                    console.log('[自动加载] 下载完成 ' + item.file + '，开始解析...');
                     const buffer = await resp.arrayBuffer();
-                    console.log('[自动加载] 解析中 ' + item.file + '（' + (buffer.byteLength/1024/1024).toFixed(1) + 'MB）...');
                     const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
                     const sheet = workbook.Sheets[workbook.SheetNames[0]];
                     const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false, defval: '' });
-                    console.log('[自动加载] 解析完成 ' + item.file + ' (' + jsonData.length + ' 行)');
-                    if (jsonData.length === 0) { console.warn('[自动加载] ' + item.file + ' 解析后0行，跳过'); continue; }
+                    if (jsonData.length === 0) continue;
 
                     const headers = jsonData[0];
                     const normalizedHeaders = {};
@@ -4412,23 +4204,10 @@
                         continue;
                     }
 
-                    const data = jsonData.filter(r => Object.values(r).some(v => v && String(v).trim() !== ''));
+                    const data = jsonData.filter(r => Object.values(r).some(v => v && v.toString().trim() !== ''));
                     if (data.length === 0) continue;
 
-                    // 【关键】下载成功后、存入前：只清除该类型+该月份的旧数据（防止残留错误数据）
-                    const _storeType = detected.type;
-                    try {
-                        const _storeTable = db[_storeType];
-                        if (_storeTable) {
-                            const _oldRows = await _storeTable.where('month').equals(dbMonth).toArray();
-                            if (_oldRows.length > 0) {
-                                await _storeTable.bulkDelete(_oldRows.map(r => r.id));
-                                console.log('[自动加载] 清除旧数据: ' + _storeType + '(' + dbMonth + ') ' + _oldRows.length + ' 条');
-                            }
-                        }
-                    } catch(_clrErr) { /* 清除失败不影响继续 */ }
-
-                    await storeData(_storeType, data, detected.job || null);
+                    await storeData(detected.type, data, detected.job || null);
                     totalRows++;
                     console.log('[自动加载] ✅ ' + item.file + ' → ' + detected.type + (detected.job ? '/' + detected.job : '') + ' (' + data.length + ' 行)');
                 } catch (e) {
@@ -4494,27 +4273,6 @@
 
         console.log('[自动加载] 完成，成功加载 ' + totalRows + ' 个文件');
 
-        // 【新增】加载后数据完整性校验 —— 防止大文件加载失败但用户不知道
-        console.log('[自动加载] 开始数据完整性校验...');
-        const _verifyMonth = monthsToLoad[monthsToLoad.length - 1].dbMonth; // 检查最早加载的月份
-        try {
-            const _attCnt = await db.attendance.where('month').equals(_verifyMonth).count();
-            const _absCnt = await db.absence.where('month').equals(_verifyMonth).count();
-            const _perfCnt = await db.performance.where('month').equals(_verifyMonth).count();
-            console.log('[数据校验] ' + _verifyMonth + ' → attendance:' + _attCnt + '条, absense:' + _absCnt + '条, performance:' + _perfCnt + '条');
-            // 连续出勤数据明显偏少（<100条 但绩效数据>0，说明attendance加载失败）
-            if (_perfCnt > 0 && _attCnt < 100) {
-                console.error('[数据校验] ⚠️ 警告：attendance 数据量异常偏少(' + _attCnt + '条），可能加载失败！');
-                // 在页面上显示警告（非alert，用页面内提示）
-                const _warnDiv = document.createElement('div');
-                _warnDiv.id = 'data-warn-tip';
-                _warnDiv.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#fff3cd;color:#856404;border:1px solid #ffeaa7;padding:12px 24px;border-radius:8px;z-index:9999;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
-                _warnDiv.innerHTML = '⚠️ 数据加载异常：连续出勤数据量偏少（' + _attCnt + '条），请按F12打开控制台查看详情，或尝试刷新页面重新加载。';
-                document.body.appendChild(_warnDiv);
-                setTimeout(() => { if(document.getElementById('data-warn-tip')) document.getElementById('data-warn-tip').remove(); }, 15000);
-            }
-        } catch(e) { console.warn('[数据校验] 校验失败:', e.message); }
-
         // 自动加载后更新所有 slot UI 和状态表格
         try {
             await updateDataStatus();
@@ -4526,8 +4284,6 @@
                 'salary': 'slot-salary',
                 'attendance': 'slot-attendance',
                 'absence': 'slot-absence',
-                'attendanceExclude': 'slot-attendanceExclude',
-                'absenceExclude': 'slot-absenceExclude',
                 'overtime': 'slot-overtime',
                 'undertime': 'slot-undertime',
                 'managerSpan': 'slot-managerSpan',
@@ -4641,7 +4397,7 @@
     // 生成静态版本：导出 IndexedDB 全部数据并嵌入 HTML
     // ============================================
     async function exportStaticVersion() {
-        const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'attendanceExclude', 'absenceExclude', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord', 'settings', 'cachedStats'];
+        const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'managerSpan', 'logisticsRatio', 'leaveRecord', 'settings', 'cachedStats'];
         const allData = {};
         
         showLoading('正在导出数据...');
@@ -4753,7 +4509,7 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
     
     // 归一化数据库中所有center字段为简称
     async function normalizeDBCenterNames() {
-        const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'attendanceExclude', 'absenceExclude', 'overtime', 'undertime', 'leaveRecord'];
+        const tables = ['headcount', 'performance', 'salary', 'attendance', 'absence', 'overtime', 'undertime', 'leaveRecord'];
         for (const tableName of tables) {
             try {
                 const allRows = await db[tableName].toArray();
@@ -4810,42 +4566,11 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
         let leaveData4Alert = [];
         try { leaveData4Alert = await db.leaveRecord.where('month').equals(month).toArray(); } catch(e) {}
         const leaveIndex4Alert = buildLeaveIndex(leaveData4Alert);
-
-        // 加载剔除名单（与 calculateAllStats 保持一致）
-        let attExcludeList4Alert = [];
-        try { attExcludeList4Alert = await db.attendanceExclude.where('month').equals(month).toArray(); } catch(e) {}
-        const attExcludeIdx4Alert = new Set();
-        attExcludeList4Alert.forEach(r => {
-            const empId = String(r['empId'] || r['工号'] || '').trim();
-            const center = r['center'] ? normalizeCenterName(r['center']) : '';
-            if (empId && center) attExcludeIdx4Alert.add(empId + '|' + center);
-        });
-
-        let absExcludeList4Alert = [];
-        try { absExcludeList4Alert = await db.absenceExclude.where('month').equals(month).toArray(); } catch(e) {}
-        const absExcludeIdx4Alert = new Set();
-        absExcludeList4Alert.forEach(r => {
-            const empId = String(r['empId'] || r['工号'] || '').trim();
-            const center = r['center'] ? normalizeCenterName(r['center']) : '';
-            if (empId && center) absExcludeIdx4Alert.add(empId + '|' + center);
-        });
-
-        // 连续出勤异常：剔除半班人员（按工号+归一化中心匹配）
-        const filteredAttData = attData.filter(row => {
-            const empId = String(row['工号'] || '').trim();
-            const center = normalizeCenterName(row['center'] || '') || '';
-            return !attExcludeIdx4Alert.has(empId + '|' + center);
-        });
-
-        // 连续未出勤：剔除请假 + 工伤（按工号+归一化中心）
         const filteredAbsData = absData.filter(row => {
             const empId = String(row['工号'] || '').trim();
             const dateStr = row['数据日期'] || row['日期'] || row['统计日期'] || '';
             const date = String(dateStr).length >= 10 ? String(dateStr).slice(0, 10) : '';
-            if (isOnLeave(empId, date, leaveIndex4Alert)) return false;
-            const center = normalizeCenterName(row['center'] || '') || '';
-            if (absExcludeIdx4Alert.has(empId + '|' + center)) return false;
-            return true;
+            return !isOnLeave(empId, date, leaveIndex4Alert);
         });
         
         const results = [];
@@ -4862,8 +4587,8 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
             row => parseFloat(row['目标偏离（%）'] || row['目标偏离(%)'] || 0) > 0 || parseFloat(row['均值偏离（%）'] || row['均值偏离(%)'] || 0) > 0, true
         ));
         
-        // 3. 连续出勤异常 - 按 中心+工号 去重（已剔除半班人员）
-        results.push(calcResolution(filteredAttData, '连续出勤异常', '人',
+        // 3. 连续出勤异常 - 按 中心+工号 去重
+        results.push(calcResolution(attData, '连续出勤异常', '人',
             row => `${normalizeCenterName(row['center'] || '')}|${row['工号'] || ''}`,
             row => parseInt(row['连续出勤天数']) >= 7, true
         ));
@@ -5382,27 +5107,6 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
                 leaveFilterApplied = true;
                 leaveFilteredCount = beforeCount - rawData.length;
             }
-
-            // 剔除名单处理（连续出勤异常剔除半班、连续未出勤剔除工伤）
-            let excludeInfo = '';
-            if (typeName === '连续出勤异常') {
-                let attExList = [];
-                try { attExList = await db.attendanceExclude.where('month').equals(month).toArray(); } catch(e) {}
-                const attExIdx = new Set();
-                attExList.forEach(r => { const e = String(r['empId'] || r['工号'] || '').trim(), c = r['center'] ? normalizeCenterName(r['center']) : ''; if (e && c) attExIdx.add(e + '|' + c); });
-                const beforeCnt = rawData.length;
-                rawData = rawData.filter(row => !attExIdx.has(String(row['工号'] || '').trim() + '|' + (normalizeCenterName(row['center'] || '') || '')));
-                if (beforeCnt > rawData.length) excludeInfo = `已剔除半班人员${beforeCnt - rawData.length}人`;
-            }
-            if (typeName === '连续未出勤') {
-                let absExList = [];
-                try { absExList = await db.absenceExclude.where('month').equals(month).toArray(); } catch(e) {}
-                const absExIdx = new Set();
-                absExList.forEach(r => { const e = String(r['empId'] || r['工号'] || '').trim(), c = r['center'] ? normalizeCenterName(r['center']) : ''; if (e && c) absExIdx.add(e + '|' + c); });
-                const beforeCnt = rawData.length;
-                rawData = rawData.filter(row => !absExIdx.has(String(row['工号'] || '').trim() + '|' + (normalizeCenterName(row['center'] || '') || '')));
-                if (beforeCnt > rawData.length) excludeInfo += (excludeInfo ? '，' : '') + `已剔除工伤${beforeCnt - rawData.length}人`;
-            }
             
             // 只取该中心的数据
             const centerData = rawData.filter(row => normalizeCenterName(row['center'] || '') === center);
@@ -5486,10 +5190,6 @@ console.log('[静态版] 嵌入数据已加载，共 ' + Object.keys(window.__EM
                     });
                     html += `</div>`;
                 }
-            }
-            // 显示剔除名单信息
-            if (excludeInfo) {
-                html += `<div style="margin-top:8px;padding:8px;background:#DBEAFE;border-radius:6px;">🚫 <strong>剔除名单</strong>：${excludeInfo}</div>`;
             }
             html += `</div>`;
             
